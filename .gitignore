@@ -1,0 +1,6 @@
+bin/
+node_modules/
+*.log
+keymaps.json
+.DS_Store
+Thumbs.db

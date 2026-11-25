@@ -1,0 +1,16 @@
+{
+  "name": "droiddeck",
+  "version": "1.0.0",
+  "description": "DroidDeck — Type-C USB Low-Latency Screen Mirroring & Multi-Touch Keyboard/Mouse Game Mapping Studio for Android (Optimized for Xiaomi HyperOS)",
+  "main": "server.js",
+  "scripts": {
+    "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-scrcpy.ps1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Yulia2233/DroidDeck.git"
+  },
+  "author": "Yulia2233",
+  "license": "MIT"
+}

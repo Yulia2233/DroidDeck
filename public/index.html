@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DroidDeck — Type-C 极速投屏 & 键鼠映射中心</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <!-- 左侧控制面板 -->
+    <aside class="sidebar">
+      <div class="brand-header">
+        <div class="brand-logo">DD</div>
+        <div>
+          <h1>DroidDeck 投屏中心</h1>
+          <p class="subtitle">Type-C 有线直连 · 游戏键鼠映射</p>
+        </div>
+      </div>
+
+      <!-- 1. 设备连接状态卡片 -->
+      <section class="card">
+        <div class="card-title-row">
+          <h2>Type-C 连接状态</h2>
+          <span id="connBadge" class="badge badge-warn">检测中...</span>
+        </div>
+
+        <div id="deviceInfoBox" class="device-info-box">
+          <div class="info-row"><span>手机型号</span><strong id="infoModel">未连接</strong></div>
+          <div class="info-row"><span>系统版本</span><strong id="infoOs">--</strong></div>
+          <div class="info-row"><span>物理分辨率</span><strong id="infoRes">--</strong></div>
+          <div class="info-row"><span>手机电量</span><strong id="infoBat">--</strong></div>
+        </div>
+
+        <!-- 小米15 HyperOS 2 必开设置引导 -->
+        <details id="miSetupGuide" class="setup-guide" open>
+          <summary>⚡ 小米 15 首次 Type-C 连接必看（3步即连）</summary>
+          <ol class="guide-steps">
+            <li>
+              <strong>开启开发者选项：</strong>打开小米15 <code>设置 → 我的设备 → 全部参数与信息</code>，连续点击 7 次 <code>OS 版本</code>。
+            </li>
+            <li>
+              <strong>开启 USB 调试：</strong>进入 <code>设置 → 更多设置 → 开发者选项</code>，打开 <strong>「USB 调试」</strong> 并在手机弹窗勾选“始终允许”。
+            </li>
+            <li>
+              <strong class="highlight-warn">【关键】开启安全设置：</strong>在开发者选项中往下滑，打开 <strong>「USB 调试（安全设置）」</strong>（小米手机必须开启此项才允许电脑鼠标点击和游戏键鼠映射！）。
+            </li>
+          </ol>
+        </details>
+      </section>
+
+      <!-- 2. 投屏画质与启动控制 -->
+      <section class="card">
+        <h2>投屏引擎与画质</h2>
+        <div class="form-grid">
+          <label>
+            <span>分辨率限制</span>
+            <select id="selMaxSize">
+              <option value="1280">720P 极速竞技 (1280px)</option>
+              <option value="1920" selected>1080P 高清流畅 (1920px)</option>
+              <option value="2670">小米15 1.5K 原画 (2670px)</option>
+            </select>
+          </label>
+          <label>
+            <span>最大帧率</span>
+            <select id="selMaxFps">
+              <option value="60" selected>60 FPS 稳帧低延迟</option>
+              <option value="90">90 FPS 高刷</option>
+              <option value="120">120 FPS 满帧电竞 (建议直插USB3口)</option>
+            </select>
+          </label>
+          <label>
+            <span>视频码率</span>
+            <select id="selBitRate">
+              <option value="8000000" selected>8 Mbps (稳帧推荐)</option>
+              <option value="16000000">16 Mbps (高清)</option>
+              <option value="24000000">24 Mbps (超清无损)</option>
+            </select>
+          </label>
+          <label>
+            <span>画面方向布局</span>
+            <select id="selOrientation">
+              <option value="auto" selected>自动跟随手机横竖屏</option>
+              <option value="portrait">强制竖屏视图</option>
+              <option value="landscape">强制横屏手游视图</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="btn-stack">
+          <button id="btnStartWebStream" class="btn btn-primary">
+            ▶ 启动内嵌投屏（带键鼠映射图层）
+          </button>
+          <button id="btnStopWebStream" class="btn btn-danger" style="display:none;">
+            ■ 停止内嵌投屏
+          </button>
+          <div class="native-row">
+            <button id="btnStartNative" class="btn btn-secondary" title="调用原生 Scrcpy SDL3 硬件窗口，包含手机声音同步转发">
+              🚀 启动原生 120FPS 独立窗口 (含音频)
+            </button>
+            <button id="btnStartOtg" class="btn btn-ghost" title="OTG HID 硬件级键鼠模拟，无需开启 USB 调试（安全设置）即可控制">
+              🔌 OTG 模式
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 手机快捷控制栏 -->
+      <section class="card">
+        <h2>快捷设备控制</h2>
+        <div class="quick-actions">
+          <button class="btn-chip" data-keycode="4" title="返回键">◀ 返回</button>
+          <button class="btn-chip" data-keycode="3" title="回到桌面">● 桌面</button>
+          <button class="btn-chip" data-keycode="187" title="多任务后台">■ 多任务</button>
+          <button class="btn-chip" data-keycode="24" title="音量加">🔊 音量+</button>
+          <button class="btn-chip" data-keycode="25" title="音量减">🔉 音量-</button>
+          <button class="btn-chip" data-keycode="26" title="电源键锁屏/亮屏">⏻ 电源</button>
+          <button id="btnScreenOff" class="btn-chip chip-accent" title="手机熄屏省电降发热，电脑端继续正常投屏玩游戏">🌙 手机熄屏投屏</button>
+          <button id="btnScreenOn" class="btn-chip" title="恢复点亮手机屏幕">☀ 点亮手机屏</button>
+          <button id="btnScreenshot" class="btn-chip" title="抓取小米15原画无损 PNG 截图并下载">📸 原画截图</button>
+          <button id="btnResetAdb" class="btn-chip" title="当 ADB 卡死或出现 failed to get feature set 时一键重置连接">🔄 重置ADB</button>
+        </div>
+      </section>
+
+      <!-- 4. 键鼠映射配置面板 -->
+      <section class="card">
+        <div class="card-title-row">
+          <h2>游戏键鼠映射 (Keymapper)</h2>
+          <label class="switch-label">
+            <input type="checkbox" id="chkShowOverlay" checked />
+            <span>显示键位提示</span>
+          </label>
+        </div>
+
+        <div class="mode-tabs">
+          <button class="mode-tab active" data-mode="touch">🖱️ 鼠标触控</button>
+          <button class="mode-tab" data-mode="play">🎮 键鼠映射激活</button>
+          <button class="mode-tab" data-mode="edit">🛠️ 键位可视化编辑</button>
+        </div>
+
+        <div class="form-grid" style="margin-top: 10px;">
+          <label style="grid-column: span 2;">
+            <span>手游键位预设方案</span>
+            <select id="selPreset">
+              <option value="moba">MOBA 预设（王者荣耀 / 英雄联盟手游）</option>
+              <option value="fps">FPS 射击预设（和平精英 / 暗区突围 / 使命召唤）</option>
+              <option value="arpg">动作开放世界（原神 / 鸣潮 / 绝区零）</option>
+            </select>
+          </label>
+          <label>
+            <span>鼠标视角灵敏度</span>
+            <input type="range" id="rngSensitivity" min="0.4" max="3.0" step="0.1" value="1.2" />
+          </label>
+          <label>
+            <span>摇杆半径 (%)</span>
+            <input type="range" id="rngJoystickRadius" min="6" max="22" step="1" value="11" />
+          </label>
+        </div>
+
+        <div id="editToolbar" class="edit-toolbar" style="display:none;">
+          <p class="edit-hint">💡 在右侧投屏画面上<strong>拖拽键位图标</strong>调整位置，<strong>点击图标</strong>修改绑定按键，右键删除。</p>
+          <div class="edit-btns">
+            <button id="btnAddTapKey" class="btn-chip chip-accent">+ 添加点击键</button>
+            <button id="btnAddJoystick" class="btn-chip">+ 添加 WASD 摇杆</button>
+            <button id="btnAddAim" class="btn-chip">+ 添加准星视角区</button>
+            <button id="btnResetPreset" class="btn-chip">↺ 恢复默认预设</button>
+          </div>
+          <button id="btnSaveKeymap" class="btn btn-primary" style="margin-top:8px;width:100%;">
+            💾 保存当前键鼠映射方案
+          </button>
+        </div>
+
+        <div id="playHintBox" class="play-hint-box" style="display:none;">
+          <div>🎯 <strong>键鼠映射已激活：</strong></div>
+          <ul>
+            <li><code>W / A / S / D</code>：8方向平滑移动虚拟摇杆（独立触控指针）</li>
+            <li><code>` (波浪键)</code> 或 <code>右键</code>：锁定/解锁鼠标控制 360° 游戏准星视角</li>
+            <li>按下画面上对应的键盘按键或鼠标左键即可触发技能/开火（支持多指同时按下）</li>
+          </ul>
+        </div>
+      </section>
+    </aside>
+
+    <!-- 右侧主投屏舞台 -->
+    <main class="stage-container">
+      <!-- 顶部实时状态 HUD -->
+      <header class="stage-hud">
+        <div class="hud-left">
+          <span class="hud-pill" id="hudStreamState">⏹ 待启动投屏</span>
+          <span class="hud-pill" id="hudResolution">分辨率: --</span>
+          <span class="hud-pill" id="hudFps">实时帧率: 0 FPS</span>
+          <span class="hud-pill" id="hudBitrate">码率: 0 Mbps</span>
+        </div>
+        <div class="hud-right">
+          <span class="hud-pill hud-mode-indicator" id="hudControlMode">当前模式: 🖱️ 普通鼠标触控</span>
+          <button id="btnFullscreenStage" class="btn-chip">⛶ 全屏舞台</button>
+        </div>
+      </header>
+
+      <!-- 核心投屏与键鼠映射画布包裹器 -->
+      <div class="stage-viewport" id="stageViewport">
+        <div class="phone-frame" id="phoneFrame">
+          <!-- WebCodecs H.264 硬件加速渲染画布 -->
+          <canvas id="screenCanvas" width="1200" height="2670"></canvas>
+
+          <!-- 可视化键鼠映射图层 (Keymapping Overlay) -->
+          <div id="keymapOverlay" class="keymap-overlay"></div>
+
+          <!-- 未投屏时的待机引导遮罩 -->
+          <div id="standbyOverlay" class="standby-overlay">
+            <div class="standby-card">
+              <div class="phone-icon">📱</div>
+              <h3 id="standbyTitle">准备连接小米 15</h3>
+              <p id="standbyDesc">
+                请使用 Type-C 转 USB 数据线将小米 15 连接到电脑，开启「USB 调试」与「USB 调试（安全设置）」，然后点击左侧 <strong>「启动内嵌投屏」</strong>。
+              </p>
+              <div class="standby-actions">
+                <button id="btnHeroStart" class="btn btn-primary">▶ 立即启动 Type-C 投屏</button>
+                <button id="btnHeroNative" class="btn btn-secondary">🚀 启动原生 120FPS 窗口</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 按键绑定弹窗 -->
+  <div id="keyBindModal" class="modal-backdrop" style="display:none;">
+    <div class="modal-card">
+      <h3>请按下要绑定的键盘按键或鼠标按键</h3>
+      <p id="keyBindTargetLabel">当前选中键位: --</p>
+      <div class="key-preview" id="keyBindPreview">等待按键输入...</div>
+      <div class="modal-actions">
+        <button id="btnBindMouseLeft" class="btn-chip">绑定鼠标左键 (LMB)</button>
+        <button id="btnBindMouseRight" class="btn-chip">绑定鼠标右键 (RMB)</button>
+        <button id="btnDeleteKeyItem" class="btn-chip" style="color:#ff6b6b;">🗑 删除此键位</button>
+        <button id="btnCancelBind" class="btn-chip">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
