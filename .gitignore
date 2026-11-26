@@ -2,5 +2,8 @@ bin/
 node_modules/
 *.log
 keymaps.json
+desktop/build/
+dist/
+installer/Output/
 .DS_Store
 Thumbs.db

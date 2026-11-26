@@ -912,84 +912,92 @@ function decodeSpsNal(nalPayload) {
 // Native Scrcpy 120FPS Window Launcher
 // ============================================================================
 let nativeScrcpyProc = null;
+let isLaunchingNative = false;
 
 async function launchNativeScrcpy(serial, config = {}, retryCount = 0) {
-  if (scrcpySession.wantActive || scrcpySession.active) {
-    await scrcpySession.stop(true);
-    broadcastJson({ type: 'stream_status', active: false, reason: 'switched_to_native' });
-  }
-
-  if (nativeScrcpyProc) {
-    try {
-      nativeScrcpyProc.kill();
-    } catch (_) {}
-    nativeScrcpyProc = null;
-  }
-
-  const args = [];
-  if (serial) args.push('-s', serial);
-  args.push('--window-title', `DroidDeck 极速投屏 (Type-C Direct)`);
-
-  const maxSize = Number(config.maxSize || 0);
-  if (maxSize > 0) args.push(`--max-size=${maxSize}`);
-
-  const maxFps = Number(config.maxFps || 120);
-  if (maxFps > 0) args.push(`--max-fps=${maxFps}`);
-
-  const bitRateM = Number(config.bitRateM || 20);
-  if (bitRateM > 0) args.push(`--video-bit-rate=${bitRateM}M`);
-
-  if (config.turnScreenOff) args.push('--turn-screen-off');
-  if (config.stayAwake !== false) args.push('--stay-awake');
-  if (config.alwaysOnTop) args.push('--always-on-top');
-  if (config.fullscreen) args.push('--fullscreen');
-  if (config.noAudio) args.push('--no-audio');
-  if (config.otgMode) args.push('--otg');
-
-  const proc = spawn(SCRCPY_EXE, args, {
-    cwd: SCRCPY_DIR,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: ADB_ENV
-  });
-  nativeScrcpyProc = proc;
-
-  let errLogs = '';
-  proc.stdout.on('data', (d) => {
-    const s = d.toString().trim();
-    if (s) console.log('[scrcpy-native]', s);
-  });
-  proc.stderr.on('data', (d) => {
-    const s = d.toString().trim();
-    if (s) {
-      errLogs += s + '\n';
-      console.log('[scrcpy-native:err]', s);
+  if (isLaunchingNative) return;
+  isLaunchingNative = true;
+  try {
+    if (scrcpySession.wantActive || scrcpySession.active) {
+      await scrcpySession.stop(true);
+      broadcastJson({ type: 'stream_status', active: false, reason: 'switched_to_native' });
     }
-  });
 
-  currentDeviceState.nativeScrcpyActive = true;
-  broadcastJson({ type: 'native_scrcpy_status', active: true });
-
-  proc.on('exit', async (code) => {
-    if (nativeScrcpyProc === proc) {
+    if (nativeScrcpyProc) {
+      try {
+        nativeScrcpyProc.kill();
+      } catch (_) {}
       nativeScrcpyProc = null;
-      currentDeviceState.nativeScrcpyActive = false;
-      if (code && code !== 0 && errLogs.includes('failed to get feature set') && retryCount < 1) {
-        console.warn('[scrcpy-native] 遇到 failed to get feature set，正在重置 ADB 并自动重试...');
-        await restartAdbWithLibusb();
-        const st = await pollDeviceStatus();
-        if (st.adbState === 'device' && st.serial) {
-          launchNativeScrcpy(st.serial, config, retryCount + 1);
-          return;
-        }
-      }
-      broadcastJson({
-        type: 'native_scrcpy_status',
-        active: false,
-        code,
-        error: code && code !== 0 ? errLogs.trim() : null
-      });
+      await new Promise((r) => setTimeout(r, 250));
     }
-  });
+
+    const args = [];
+    if (serial) args.push('-s', serial);
+    args.push('--window-title=DroidDeck-120FPS');
+
+    const maxSize = Number(config.maxSize || 0);
+    if (maxSize > 0) args.push(`--max-size=${maxSize}`);
+
+    const maxFps = Number(config.maxFps || 120);
+    if (maxFps > 0) args.push(`--max-fps=${maxFps}`);
+
+    const bitRateM = Number(config.bitRateM || 20);
+    if (bitRateM > 0) args.push(`--video-bit-rate=${bitRateM}M`);
+
+    if (config.turnScreenOff) args.push('--turn-screen-off');
+    if (config.stayAwake !== false) args.push('--stay-awake');
+    if (config.alwaysOnTop) args.push('--always-on-top');
+    if (config.fullscreen) args.push('--fullscreen');
+    if (config.noAudio) args.push('--no-audio');
+    if (config.otgMode) args.push('--otg');
+
+    const proc = spawn(SCRCPY_EXE, args, {
+      cwd: SCRCPY_DIR,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: ADB_ENV
+    });
+    nativeScrcpyProc = proc;
+
+    let errLogs = '';
+    proc.stdout.on('data', (d) => {
+      const s = d.toString().trim();
+      if (s) console.log('[scrcpy-native]', s);
+    });
+    proc.stderr.on('data', (d) => {
+      const s = d.toString().trim();
+      if (s) {
+        errLogs += s + '\n';
+        console.log('[scrcpy-native:err]', s);
+      }
+    });
+
+    currentDeviceState.nativeScrcpyActive = true;
+    broadcastJson({ type: 'native_scrcpy_status', active: true });
+
+    proc.on('exit', async (code) => {
+      if (nativeScrcpyProc === proc) {
+        nativeScrcpyProc = null;
+        currentDeviceState.nativeScrcpyActive = false;
+        if (code && code !== 0 && errLogs.includes('failed to get feature set') && retryCount < 1) {
+          console.warn('[scrcpy-native] 遇到 failed to get feature set，正在重置 ADB 并自动重试...');
+          await restartAdbWithLibusb();
+          const st = await pollDeviceStatus();
+          if (st.adbState === 'device' && st.serial) {
+            launchNativeScrcpy(st.serial, config, retryCount + 1);
+            return;
+          }
+        }
+        broadcastJson({
+          type: 'native_scrcpy_status',
+          active: false,
+          code,
+          error: code && code !== 0 && errLogs.trim() ? errLogs.trim() : null
+        });
+      }
+    });
+  } finally {
+    isLaunchingNative = false;
+  }
 }
 
 function stopNativeScrcpy() {

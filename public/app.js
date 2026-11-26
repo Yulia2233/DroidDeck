@@ -304,6 +304,7 @@ function connectWebSocket() {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'init') {
         updateDeviceStatusUI(msg.device);
+        setNativeActiveUI(Boolean(msg.device && msg.device.nativeScrcpyActive));
         if (msg.stream && msg.stream.active) {
           updateStageDimensions(msg.stream.width || 1200, msg.stream.height || 2670);
           setStreamActiveUI(true);
@@ -321,6 +322,7 @@ function connectWebSocket() {
         h264Player.needsKeyframe = true;
         document.getElementById('hudStreamState').textContent = '🟡 连接波动，正在自动重连...';
       } else if (msg.type === 'native_scrcpy_status') {
+        setNativeActiveUI(Boolean(msg.active));
         if (msg.error) {
           alert(`原生 Scrcpy 窗口异常退出：\n${msg.error}`);
         }
@@ -335,6 +337,25 @@ function connectWebSocket() {
   };
 }
 
+let nativeActive = false;
+
+function setNativeActiveUI(active) {
+  nativeActive = active;
+  const btn = document.getElementById('btnStartNative');
+  if (active) {
+    btn.textContent = '■ 关闭原生 120FPS 独立窗口';
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-danger');
+    document.getElementById('hudStreamState').textContent = '🚀 原生独立窗口运行中 (含音频)';
+  } else {
+    btn.textContent = '🚀 启动原生 120FPS 独立窗口 (含音频)';
+    btn.classList.remove('btn-danger');
+    btn.classList.add('btn-secondary');
+    if (!streamActive) {
+      document.getElementById('hudStreamState').textContent = '⏹ 待启动投屏';
+    }
+  }
+}
 function sendWs(payload) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
@@ -907,18 +928,37 @@ async function stopWebStream() {
 }
 
 async function startNativeWindow(otgMode = false) {
+  if (nativeActive && !otgMode) {
+    await fetch('/api/native/stop', { method: 'POST' });
+    setNativeActiveUI(false);
+    return;
+  }
+
   const maxSize = Number(document.getElementById('selMaxSize').value);
   const maxFps = Number(document.getElementById('selMaxFps').value);
   const bitRateM = Math.round(Number(document.getElementById('selBitRate').value) / 1000000);
 
-  const res = await fetch('/api/native/start', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ maxSize, maxFps, bitRateM, otgMode })
-  });
-  const data = await res.json();
-  if (!data.ok) {
-    alert(data.error || '启动原生窗口失败');
+  const btn = document.getElementById('btnStartNative');
+  btn.textContent = '⏳ 正在拉起原生窗口...';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/native/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maxSize, maxFps, bitRateM, otgMode })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert(data.error || '启动原生窗口失败');
+      setNativeActiveUI(false);
+    } else {
+      setNativeActiveUI(true);
+    }
+  } catch (e) {
+    alert('请求失败: ' + e.message);
+    setNativeActiveUI(false);
+  } finally {
+    btn.disabled = false;
   }
 }
 
