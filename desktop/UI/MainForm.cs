@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -56,6 +57,8 @@ namespace DroidDeck.UI
 
         private Timer _pollTimer;
         private bool _isStarting;
+        private readonly List<string> _presetKeys = new List<string>();
+        private bool _updatingPresetCombo;
 
         public MainForm()
         {
@@ -370,12 +373,10 @@ namespace DroidDeck.UI
             cardKey.Controls.Add(_btnModePlay);
             cardKey.Controls.Add(_btnModeEdit);
 
-            _cmbPreset = AddCombo(cardKey, "手游预设方案", 10, 74, 326, new[]
-            {
-                "MOBA 预设（王者荣耀 / LOL手游）",
-                "FPS 射击预设（和平精英 / 暗区突围）",
-                "动作开放世界（原神 / 鸣潮 / 绝区零）"
-            }, 0);
+            _cmbPreset = AddCombo(cardKey, "键鼠映射方案（支持自定义新建/改名/删）", 10, 74, 186, new[] { "加载中..." }, 0);
+            AddQuickBtn(cardKey, "+ 新建", 202, 90, 58, CreateCustomPreset);
+            AddQuickBtn(cardKey, "改名", 264, 90, 42, RenameCurrentPreset);
+            AddQuickBtn(cardKey, "删", 310, 90, 26, DeleteCurrentPreset);
 
             var lblSens = new Label { Text = "视角灵敏度", Location = new Point(10, 128), Size = new Size(140, 18), ForeColor = Color.FromArgb(148, 163, 184) };
             _trkSens = new TrackBar { Minimum = 4, Maximum = 30, Value = 12, TickStyle = TickStyle.None, Location = new Point(8, 146), Size = new Size(158, 30) };
@@ -416,11 +417,11 @@ namespace DroidDeck.UI
             };
             var lblEditTip = new Label
             {
-                Text = "在右侧画面拖拽图标调位，左键点击改键，右键删除",
+                Text = "拖拽调位 · 双击空白加键 · 单击改键/坐标 · 右键删除",
                 Location = new Point(6, 78),
                 Size = new Size(314, 20),
                 ForeColor = Color.FromArgb(148, 163, 184),
-                Font = new Font("Microsoft YaHei UI", 8f)
+                Font = new Font("Microsoft YaHei UI", 7.8f)
             };
             _editPanel.Controls.Add(btnSave);
             _editPanel.Controls.Add(lblEditTip);
@@ -488,9 +489,12 @@ namespace DroidDeck.UI
             };
             _cmbPreset.SelectedIndexChanged += (s, e) =>
             {
-                string[] keys = { "moba", "fps", "arpg" };
-                string key = keys[Math.Max(0, Math.Min(2, _cmbPreset.SelectedIndex))];
-                ApplyPresetToUI(key);
+                if (_updatingPresetCombo) return;
+                int idx = _cmbPreset.SelectedIndex;
+                if (idx >= 0 && idx < _presetKeys.Count)
+                {
+                    ApplyPresetToUI(_presetKeys[idx]);
+                }
             };
             _trkSens.Scroll += (s, e) =>
             {
@@ -538,6 +542,7 @@ namespace DroidDeck.UI
                 _overlay.RefreshOverlay();
                 KeymapRepository.Save(_store);
             };
+            _input.EditEmptyDoubleClicked += (normPt) => AddTapKeyAt(normPt.X, normPt.Y);
 
             Move += (s, e) => SyncOverlay();
             Resize += (s, e) =>
@@ -612,9 +617,41 @@ namespace DroidDeck.UI
             SyncOverlay();
         }
 
+        private void RefreshPresetCombo(string selectKey)
+        {
+            _updatingPresetCombo = true;
+            try
+            {
+                _cmbPreset.Items.Clear();
+                _presetKeys.Clear();
+                int selIdx = 0;
+                int i = 0;
+                foreach (var kv in _store.Presets)
+                {
+                    _presetKeys.Add(kv.Key);
+                    _cmbPreset.Items.Add(kv.Value.Name ?? kv.Key);
+                    if (kv.Key == selectKey) selIdx = i;
+                    i++;
+                }
+                if (_cmbPreset.Items.Count > 0)
+                {
+                    _cmbPreset.SelectedIndex = Math.Max(0, Math.Min(_cmbPreset.Items.Count - 1, selIdx));
+                }
+            }
+            finally
+            {
+                _updatingPresetCombo = false;
+            }
+        }
+
         private void ApplyPresetToUI(string key)
         {
+            if (!_store.Presets.ContainsKey(key) && _store.Presets.Count > 0)
+            {
+                foreach (var k in _store.Presets.Keys) { key = k; break; }
+            }
             _store.ActivePresetKey = key;
+            RefreshPresetCombo(key);
             if (_store.Presets.ContainsKey(key))
             {
                 _input.ActivePreset = _store.Presets[key];
@@ -750,14 +787,16 @@ namespace DroidDeck.UI
             await RefreshStatusAsync();
         }
 
-        private void AddTapKey()
+        private void AddTapKey() => AddTapKeyAt(0.5, 0.5);
+
+        private void AddTapKeyAt(double nx, double ny)
         {
             var item = new KeymapItem
             {
                 Id = "tap_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 Type = "tap",
-                X = 0.5,
-                Y = 0.5,
+                X = nx,
+                Y = ny,
                 VirtualKey = 0x47,
                 KeyCode = "G",
                 KeyName = "G",
@@ -773,6 +812,67 @@ namespace DroidDeck.UI
                     _overlay.RefreshOverlay();
                 }
             }
+            KeymapRepository.Save(_store);
+        }
+
+        private void CreateCustomPreset()
+        {
+            string name;
+            bool cloneCurrent;
+            if (!SchemePrompt.ShowNewScheme(this, out name, out cloneCurrent)) return;
+
+            string key = "custom_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var newPreset = new KeymapPreset { Key = key, Name = name, Items = new List<KeymapItem>() };
+            if (cloneCurrent && _input.ActivePreset != null)
+            {
+                foreach (var it in _input.ActivePreset.Items)
+                {
+                    newPreset.Items.Add(new KeymapItem
+                    {
+                        Id = it.Id,
+                        Type = it.Type,
+                        X = it.X,
+                        Y = it.Y,
+                        Radius = it.Radius,
+                        KeyCode = it.KeyCode,
+                        VirtualKey = it.VirtualKey,
+                        KeyName = it.KeyName,
+                        Label = it.Label
+                    });
+                }
+            }
+            _store.Presets[key] = newPreset;
+            ApplyPresetToUI(key);
+            KeymapRepository.Save(_store);
+            SetControlMode(ControlMode.Edit);
+        }
+
+        private void RenameCurrentPreset()
+        {
+            if (_input.ActivePreset == null) return;
+            string newName = SchemePrompt.ShowRename(this, _input.ActivePreset.Name);
+            if (string.IsNullOrEmpty(newName)) return;
+            _input.ActivePreset.Name = newName;
+            RefreshPresetCombo(_store.ActivePresetKey);
+            KeymapRepository.Save(_store);
+        }
+
+        private void DeleteCurrentPreset()
+        {
+            if (_store.Presets.Count <= 1)
+            {
+                MessageBox.Show("至少需要保留一套映射方案。", "DroidDeck");
+                return;
+            }
+            string key = _store.ActivePresetKey;
+            string title = _input.ActivePreset?.Name ?? key;
+            if (MessageBox.Show($"确定删除映射方案「{title}」吗？", "DroidDeck", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+            _store.Presets.Remove(key);
+            string nextKey = null;
+            foreach (var k in _store.Presets.Keys) { nextKey = k; break; }
+            ApplyPresetToUI(nextKey);
+            KeymapRepository.Save(_store);
         }
 
         private void AddJoystick()
@@ -816,6 +916,16 @@ namespace DroidDeck.UI
             {
                 _store.Presets[key] = def.Presets[key];
                 ApplyPresetToUI(key);
+                KeymapRepository.Save(_store);
+            }
+            else if (_input.ActivePreset != null)
+            {
+                if (MessageBox.Show("确定清空当前自定义方案的所有键位吗？", "DroidDeck", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
+                {
+                    _input.ActivePreset.Items.Clear();
+                    _overlay.RefreshOverlay();
+                    KeymapRepository.Save(_store);
+                }
             }
         }
 

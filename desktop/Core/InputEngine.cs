@@ -52,6 +52,7 @@ namespace DroidDeck.Core
         public event Action OverlayVisualChanged;
         public event Action<KeymapItem> EditItemClicked;
         public event Action<KeymapItem> EditItemDeleted;
+        public event Action<PointF> EditEmptyDoubleClicked;
         public event Action<int> KeyCapturedForBind;
         public event Action<bool> AimLockChanged;
 
@@ -335,11 +336,22 @@ namespace DroidDeck.Core
                 var item = _dragItem;
                 bool wasMoved = _dragMoved;
                 _dragItem = null;
-                if (!wasMoved && item.Type != "joystick")
+                if (!wasMoved)
                 {
                     EditItemClicked?.Invoke(item);
                 }
             }
+        }
+
+        public void HandleSurfaceDoubleClick(Point screenPt)
+        {
+            if (Mode != ControlMode.Edit || IsBindingKey) return;
+            Rectangle videoRect = _getVideoScreenRect();
+            if (!videoRect.Contains(screenPt)) return;
+            if (HitTestItem(screenPt, videoRect) != null) return;
+            float nx = (float)Math.Max(0.04, Math.Min(0.96, (screenPt.X - videoRect.Left) / (double)Math.Max(1, videoRect.Width)));
+            float ny = (float)Math.Max(0.04, Math.Min(0.96, (screenPt.Y - videoRect.Top) / (double)Math.Max(1, videoRect.Height)));
+            EditEmptyDoubleClicked?.Invoke(new PointF(nx, ny));
         }
 
         public void HandleSurfaceMouseWheel(int delta, Point screenPt)

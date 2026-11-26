@@ -55,6 +55,7 @@ namespace DroidDeck.UI
             MouseDown += (s, e) => _input.HandleSurfaceMouseDown(e.Button, PointToScreen(e.Location));
             MouseMove += (s, e) => _input.HandleSurfaceMouseMove(PointToScreen(e.Location));
             MouseUp += (s, e) => _input.HandleSurfaceMouseUp(e.Button, PointToScreen(e.Location));
+            MouseDoubleClick += (s, e) => _input.HandleSurfaceDoubleClick(PointToScreen(e.Location));
             MouseWheel += (s, e) => _input.HandleSurfaceMouseWheel(e.Delta, PointToScreen(e.Location));
         }
 
