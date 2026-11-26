@@ -248,15 +248,19 @@ namespace DroidDeck.UI
                     else
                     {
                         bool pressed = _input.PressedItemIds.Contains(item.Id);
+                        bool suspended = item.VirtualKey < 0 && _input.ShouldSuspendMouseMappings;
                         float r = 21f;
-                        Color fillC = pressed ? Color.FromArgb(235, 255, 105, 0) : Color.FromArgb(185, 15, 23, 42);
-                        Color borderC = Color.FromArgb(235, 255, 105, 0);
+                        Color fillC = suspended ? Color.FromArgb(75, 15, 23, 42)
+                            : pressed ? Color.FromArgb(235, 255, 105, 0) : Color.FromArgb(185, 15, 23, 42);
+                        Color borderC = suspended ? Color.FromArgb(110, 148, 163, 184) : Color.FromArgb(235, 255, 105, 0);
+                        Brush textBrush = suspended ? Brushes.Silver : Brushes.White;
                         using (var fill = new SolidBrush(fillC))
-                        using (var pen = new Pen(borderC, 2f))
+                        using (var pen = new Pen(borderC, suspended ? 1.5f : 2f))
                         {
+                            if (suspended) pen.DashStyle = DashStyle.Dash;
                             g.FillEllipse(fill, cx - r, cy - r, r * 2, r * 2);
                             g.DrawEllipse(pen, cx - r, cy - r, r * 2, r * 2);
-                            g.DrawString(item.KeyName ?? "?", fontKey, Brushes.White, new RectangleF(cx - r, cy - r, r * 2, r * 2), sf);
+                            g.DrawString(item.KeyName ?? "?", fontKey, textBrush, new RectangleF(cx - r, cy - r, r * 2, r * 2), sf);
                         }
 
                         if (!string.IsNullOrEmpty(item.Label))

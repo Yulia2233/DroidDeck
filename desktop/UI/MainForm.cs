@@ -446,7 +446,7 @@ namespace DroidDeck.UI
 
             _lblPlayHint = new Label
             {
-                Text = "🎯 键鼠映射提示：\n• WASD：8方向虚拟摇杆\n• ~ (波浪键)：锁定/解锁鼠标 360° 视角 (Esc 退出锁定)\n• 支持左键/右键/Tab/Space/字母键多指并发",
+                Text = "🎯 键鼠映射提示：\n• WASD：8方向虚拟摇杆 · 支持 Tab/Space/字母键并发\n• ~ (波浪键)：锁定/解锁 360° 视角 (Esc 也可解锁)\n• 解锁后鼠标左键/滚轮自动恢复直点与滑动，不与开火冲突",
                 Location = new Point(10, 184),
                 Size = new Size(326, 98),
                 BackColor = Color.FromArgb(15, 20, 29),

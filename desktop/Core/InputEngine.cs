@@ -31,6 +31,7 @@ namespace DroidDeck.Core
         public double MouseSensitivity { get; set; } = 1.2;
         public bool IsBindingKey { get; set; }
         public bool IsAimLocked { get; private set; }
+        public bool ShouldSuspendMouseMappings => Mode == ControlMode.Play && !IsAimLocked && ActivePreset?.Items.Any(i => i.Type == "aim") == true;
         public HashSet<string> PressedItemIds { get; } = new HashSet<string>();
         public PointF JoystickOffset { get; private set; } = PointF.Empty;
 
@@ -217,10 +218,19 @@ namespace DroidDeck.Core
             }
             else if (Mode == ControlMode.Play && !IsAimLocked && inVideo)
             {
-                if (button == MouseButtons.Left)
+                int btnVk = MouseButtonToVk(button);
+                var aim = ActivePreset?.Items.FirstOrDefault(i => i.Type == "aim");
+                if (aim != null && btnVk != 0 && aim.VirtualKey == btnVk)
                 {
-                    if (HandlePlayKeyDown(-1)) return;
-                    if (_control.IsConnected)
+                    SetAimLock(true);
+                    return;
+                }
+
+                // When aim lock is cancelled in a scheme with an aim zone, suspend mouse button mappings
+                // so left-click & scroll operate menus/backpacks directly without conflicting with Fire/Scope.
+                if (ShouldSuspendMouseMappings)
+                {
+                    if (button == MouseButtons.Left && _control.IsConnected)
                     {
                         _touchDragging = true;
                         var devPt = ScreenToDevice(screenPt, videoRect);
@@ -228,22 +238,17 @@ namespace DroidDeck.Core
                         _lastMoveTick = Environment.TickCount;
                         _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
                     }
+                    return;
                 }
-                else if (button == MouseButtons.Right)
+
+                if (btnVk != 0 && HandlePlayKeyDown(btnVk)) return;
+                if (button == MouseButtons.Left && _control.IsConnected)
                 {
-                    HandlePlayKeyDown(-2);
-                }
-                else if (button == MouseButtons.Middle)
-                {
-                    HandlePlayKeyDown(-3);
-                }
-                else if (button == MouseButtons.XButton1)
-                {
-                    HandlePlayKeyDown(-4);
-                }
-                else if (button == MouseButtons.XButton2)
-                {
-                    HandlePlayKeyDown(-5);
+                    _touchDragging = true;
+                    var devPt = ScreenToDevice(screenPt, videoRect);
+                    _lastMoveDevPt = devPt;
+                    _lastMoveTick = Environment.TickCount;
+                    _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
                 }
             }
             else if (Mode == ControlMode.Edit && inVideo)
@@ -312,31 +317,13 @@ namespace DroidDeck.Core
             }
             else if (Mode == ControlMode.Play && !IsAimLocked)
             {
-                if (button == MouseButtons.Left)
+                int btnVk = MouseButtonToVk(button);
+                if (!ShouldSuspendMouseMappings && btnVk != 0 && HandlePlayKeyUp(btnVk)) return;
+                if (button == MouseButtons.Left && _touchDragging)
                 {
-                    if (HandlePlayKeyUp(-1)) return;
-                    if (_touchDragging)
-                    {
-                        _touchDragging = false;
-                        var devPt = ScreenToDevice(screenPt, videoRect);
-                        _control.InjectTouch(1, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
-                    }
-                }
-                else if (button == MouseButtons.Right)
-                {
-                    HandlePlayKeyUp(-2);
-                }
-                else if (button == MouseButtons.Middle)
-                {
-                    HandlePlayKeyUp(-3);
-                }
-                else if (button == MouseButtons.XButton1)
-                {
-                    HandlePlayKeyUp(-4);
-                }
-                else if (button == MouseButtons.XButton2)
-                {
-                    HandlePlayKeyUp(-5);
+                    _touchDragging = false;
+                    var devPt = ScreenToDevice(screenPt, videoRect);
+                    _control.InjectTouch(1, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
                 }
             }
             else if (Mode == ControlMode.Edit && button == MouseButtons.Left && _dragItem != null)
@@ -362,9 +349,19 @@ namespace DroidDeck.Core
             EditEmptyDoubleClicked?.Invoke(new PointF(nx, ny));
         }
 
+        private static int MouseButtonToVk(MouseButtons button)
+        {
+            if (button == MouseButtons.Left) return -1;
+            if (button == MouseButtons.Right) return -2;
+            if (button == MouseButtons.Middle) return -3;
+            if (button == MouseButtons.XButton1) return -4;
+            if (button == MouseButtons.XButton2) return -5;
+            return 0;
+        }
+
         public void HandleSurfaceMouseWheel(int delta, Point screenPt)
         {
-            if (Mode != ControlMode.Touch || !_control.IsConnected || IsBindingKey) return;
+            if ((Mode != ControlMode.Touch && !(Mode == ControlMode.Play && !IsAimLocked)) || !_control.IsConnected || IsBindingKey) return;
             Rectangle videoRect = _getVideoScreenRect();
             if (!videoRect.Contains(screenPt)) return;
             var devPt = ScreenToDevice(screenPt, videoRect);
@@ -576,6 +573,13 @@ namespace DroidDeck.Core
                     _cursorHidden = false;
                 }
                 _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
+                foreach (var mouseVk in _activeTaps.Keys.Where(k => k < 0).ToList())
+                {
+                    var tap = _activeTaps[mouseVk];
+                    _activeTaps.Remove(mouseVk);
+                    _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.VideoWidth, _host.VideoHeight);
+                    PressedItemIds.Remove(tap.ItemId);
+                }
             }
             AimLockChanged?.Invoke(IsAimLocked);
             OverlayVisualChanged?.Invoke();
