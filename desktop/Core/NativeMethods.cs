@@ -147,6 +147,9 @@ namespace DroidDeck.Core
         public static extern bool SetProcessDPIAware();
 
         [DllImport("user32.dll")]
+        public static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+        [DllImport("user32.dll")]
         public static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
 
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]

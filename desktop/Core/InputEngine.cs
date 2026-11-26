@@ -55,6 +55,7 @@ namespace DroidDeck.Core
         public event Action<PointF> EditEmptyDoubleClicked;
         public event Action<int> KeyCapturedForBind;
         public event Action<bool> AimLockChanged;
+        public event Action ToggleFullscreenRequested;
 
         private class ActiveTap
         {
@@ -163,6 +164,13 @@ namespace DroidDeck.Core
                         return (IntPtr)1;
                     }
                     return NativeMethods.CallNextHookEx(_kbHook, nCode, wParam, lParam);
+                }
+
+                // F11 toggles stage fullscreen across both Touch and Play modes
+                if (vk == 0x7A && isDown)
+                {
+                    _mainForm.BeginInvoke(new Action(() => ToggleFullscreenRequested?.Invoke()));
+                    return (IntPtr)1;
                 }
 
                 if (Mode == ControlMode.Play)

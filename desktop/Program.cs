@@ -21,7 +21,15 @@ namespace DroidDeck
                 return;
             }
 
-            NativeMethods.SetProcessDPIAware();
+            try
+            {
+                // Per-Monitor V2 DPI awareness for crisp text & exact scaling on Windows 10/11
+                NativeMethods.SetProcessDpiAwarenessContext(new IntPtr(-4));
+            }
+            catch
+            {
+                NativeMethods.SetProcessDPIAware();
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new MainForm());

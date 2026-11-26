@@ -41,9 +41,16 @@ namespace DroidDeck.UI
         private ComboBox _cmbBitRate;
         private CheckBox _chkAudio;
         private CheckBox _chkTurnScreenOff;
+        private CheckBox _chkAntiAlias;
         private Button _btnStart;
         private Button _btnStop;
         private Button _btnHeroStart;
+        private Button _btnToggleSidebar;
+        private Button _btnFullscreen;
+        private bool _isFullscreen;
+        private FormWindowState _prevWindowState;
+        private Rectangle _prevBounds;
+        private bool _prevSidebarVisible = true;
 
         private Button _btnModeTouch;
         private Button _btnModePlay;
@@ -157,19 +164,60 @@ namespace DroidDeck.UI
                 Dock = DockStyle.Top,
                 Height = 44,
                 BackColor = Color.FromArgb(19, 24, 34),
-                Padding = new Padding(12, 8, 12, 8)
+                Padding = new Padding(10, 7, 10, 7)
             };
 
-            _lblHudState = MakeHudPill("⏹ 待启动投屏", 12);
-            _lblHudRes = MakeHudPill("分辨率: --", 250);
-            _lblHudFps = MakeHudPill("帧率: 0 FPS", 390);
-            _lblHudMode = MakeHudPill("模式: 🖱️ 鼠标触控", 510);
-            _lblHudMode.ForeColor = Color.FromArgb(255, 176, 116);
+            var hudFlow = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                FlowDirection = FlowDirection.LeftToRight,
+                WrapContents = false,
+                AutoSize = false,
+                BackColor = Color.Transparent,
+                Margin = new Padding(0)
+            };
 
-            hudBar.Controls.Add(_lblHudState);
-            hudBar.Controls.Add(_lblHudRes);
-            hudBar.Controls.Add(_lblHudFps);
-            hudBar.Controls.Add(_lblHudMode);
+            _btnToggleSidebar = new Button
+            {
+                Text = "◀ 收起侧栏",
+                Size = new Size(96, 28),
+                Margin = new Padding(0, 1, 8, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(26, 33, 48),
+                ForeColor = Color.FromArgb(226, 232, 240),
+                Font = new Font("Microsoft YaHei UI", 8.8f),
+                Cursor = Cursors.Hand
+            };
+            _lblHudState = MakeHudPill("⏹ 待启动投屏", 0);
+            _lblHudRes = MakeHudPill("分辨率: --", 0);
+            _lblHudFps = MakeHudPill("帧率: 0 FPS", 0);
+            _lblHudMode = MakeHudPill("模式: 🖱️ 鼠标触控", 0);
+            _lblHudMode.ForeColor = Color.FromArgb(255, 176, 116);
+            foreach (var p in new[] { _lblHudState, _lblHudRes, _lblHudFps, _lblHudMode })
+            {
+                p.Margin = new Padding(0, 2, 8, 0);
+            }
+
+            hudFlow.Controls.Add(_btnToggleSidebar);
+            hudFlow.Controls.Add(_lblHudState);
+            hudFlow.Controls.Add(_lblHudRes);
+            hudFlow.Controls.Add(_lblHudFps);
+            hudFlow.Controls.Add(_lblHudMode);
+
+            _btnFullscreen = new Button
+            {
+                Text = "⛶ 全屏 (F11)",
+                Dock = DockStyle.Right,
+                Width = 110,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(37, 47, 68),
+                ForeColor = Color.White,
+                Font = new Font("Microsoft YaHei UI", 8.8f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+
+            hudBar.Controls.Add(hudFlow);
+            hudBar.Controls.Add(_btnFullscreen);
 
             _videoHostPanel = new Panel
             {
@@ -302,29 +350,37 @@ namespace DroidDeck.UI
             y += 188;
 
             // Card 2: Stream Quality & Start/Stop
-            var cardStream = MakeCard(12, y, 348, 198, "原生 D3D11VA 引擎设置");
-            _cmbMaxSize = AddCombo(cardStream, "分辨率", 12, 38, 155, new[] { "720P 极速 (1280)", "1080P 高清 (1920)", "1.5K 原画 (2670)" }, 1);
-            _cmbMaxFps = AddCombo(cardStream, "最大帧率", 180, 38, 155, new[] { "60 FPS 稳帧", "90 FPS 高刷", "120 FPS 电竞满帧" }, 2);
-            _cmbBitRate = AddCombo(cardStream, "视频码率", 12, 88, 155, new[] { "8 Mbps", "16 Mbps (推荐)", "24 Mbps (超清)" }, 1);
+            var cardStream = MakeCard(12, y, 348, 218, "原生 120FPS 引擎设置");
+            _cmbMaxSize = AddCombo(cardStream, "分辨率", 12, 36, 155, new[] { "720P 极速 (1280)", "1080P 高清 (1920)", "原生超清 (不缩放)" }, 1);
+            _cmbMaxFps = AddCombo(cardStream, "最大帧率", 180, 36, 155, new[] { "60 FPS 稳帧", "90 FPS 高刷", "120 FPS 电竞满帧" }, 2);
+            _cmbBitRate = AddCombo(cardStream, "视频码率", 12, 86, 155, new[] { "8 Mbps", "16 Mbps (推荐)", "24 Mbps (超清)" }, 1);
             _chkAudio = new CheckBox
             {
                 Text = "同步手机声音到电脑",
                 Checked = true,
-                Location = new Point(180, 96),
+                Location = new Point(180, 92),
                 Size = new Size(160, 22)
             };
             _chkTurnScreenOff = new CheckBox
             {
                 Text = "启动时自动熄屏省电",
                 Checked = false,
-                Location = new Point(180, 118),
+                Location = new Point(180, 114),
                 Size = new Size(160, 22)
             };
-            _btnStart = MakePrimaryButton("▶ 启动 120FPS 原生投屏", 12, 146, 324, 38);
+            _chkAntiAlias = new CheckBox
+            {
+                Text = "✨ 抗锯齿超清渲染 (OpenGL 三线性过滤，消文字锯齿)",
+                Checked = true,
+                Location = new Point(12, 140),
+                Size = new Size(326, 22),
+                ForeColor = Color.FromArgb(167, 243, 208)
+            };
+            _btnStart = MakePrimaryButton("▶ 启动 120FPS 原生投屏", 12, 168, 324, 38);
             _btnStop = new Button
             {
                 Text = "■ 停止投屏",
-                Location = new Point(12, 146),
+                Location = new Point(12, 168),
                 Size = new Size(324, 38),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(220, 38, 38),
@@ -335,10 +391,11 @@ namespace DroidDeck.UI
             };
             cardStream.Controls.Add(_chkAudio);
             cardStream.Controls.Add(_chkTurnScreenOff);
+            cardStream.Controls.Add(_chkAntiAlias);
             cardStream.Controls.Add(_btnStart);
             cardStream.Controls.Add(_btnStop);
             _sidebar.Controls.Add(cardStream);
-            y += 208;
+            y += 228;
 
             // Card 3: Quick Actions
             var cardQuick = MakeCard(12, y, 348, 134, "快捷设备控制");
@@ -436,6 +493,9 @@ namespace DroidDeck.UI
             _btnStart.Click += async (s, e) => await StartMirroringAsync();
             _btnHeroStart.Click += async (s, e) => await StartMirroringAsync();
             _btnStop.Click += (s, e) => StopMirroring();
+            _btnToggleSidebar.Click += (s, e) => ToggleSidebar();
+            _btnFullscreen.Click += (s, e) => ToggleFullscreen();
+            _input.ToggleFullscreenRequested += ToggleFullscreen;
 
             _host.VideoDimensionsChanged += (w, h) =>
             {
@@ -723,7 +783,7 @@ namespace DroidDeck.UI
                     return;
                 }
 
-                int[] sizes = { 1280, 1920, 2670 };
+                int[] sizes = { 1280, 1920, 0 };
                 int[] fpsArr = { 60, 90, 120 };
                 int[] bitArr = { 8, 16, 24 };
 
@@ -732,7 +792,7 @@ namespace DroidDeck.UI
                 int bitM = bitArr[Math.Max(0, _cmbBitRate.SelectedIndex)];
 
                 await _control.StartAsync(st.Serial);
-                await _host.StartAsync(st.Serial, maxSize, maxFps, bitM, _chkAudio.Checked, _chkTurnScreenOff.Checked);
+                await _host.StartAsync(st.Serial, maxSize, maxFps, bitM, _chkAudio.Checked, _chkTurnScreenOff.Checked, _chkAntiAlias.Checked);
                 if (_chkTurnScreenOff.Checked)
                 {
                     _control.SetDisplayPower(false);
@@ -929,18 +989,65 @@ namespace DroidDeck.UI
             }
         }
 
+        private void ToggleSidebar()
+        {
+            _sidebar.Visible = !_sidebar.Visible;
+            _btnToggleSidebar.Text = _sidebar.Visible ? "◀ 收起侧栏" : "▶ 展开侧栏";
+            BeginInvoke(new Action(() =>
+            {
+                _host.LayoutEmbeddedWindow();
+                SyncOverlay();
+            }));
+        }
+
+        private void ToggleFullscreen()
+        {
+            if (!_isFullscreen)
+            {
+                _prevWindowState = WindowState;
+                _prevBounds = Bounds;
+                _prevSidebarVisible = _sidebar.Visible;
+
+                _isFullscreen = true;
+                _sidebar.Visible = false;
+                _btnToggleSidebar.Text = "▶ 展开侧栏";
+                _btnFullscreen.Text = "✕ 退出全屏";
+
+                var scr = Screen.FromControl(this);
+                FormBorderStyle = FormBorderStyle.None;
+                WindowState = FormWindowState.Normal;
+                Bounds = scr.Bounds;
+            }
+            else
+            {
+                _isFullscreen = false;
+                FormBorderStyle = FormBorderStyle.Sizable;
+                Bounds = _prevBounds;
+                WindowState = _prevWindowState;
+                _sidebar.Visible = _prevSidebarVisible;
+                _btnToggleSidebar.Text = _sidebar.Visible ? "◀ 收起侧栏" : "▶ 展开侧栏";
+                _btnFullscreen.Text = "⛶ 全屏 (F11)";
+            }
+
+            BeginInvoke(new Action(() =>
+            {
+                _host.LayoutEmbeddedWindow();
+                SyncOverlay();
+            }));
+        }
+
         // UI Builder Helpers
         private Label MakeHudPill(string text, int x)
         {
             return new Label
             {
                 Text = text,
-                Location = new Point(x, 9),
+                Location = new Point(x, 8),
                 AutoSize = true,
                 BackColor = Color.FromArgb(26, 33, 48),
                 ForeColor = Color.FromArgb(226, 232, 240),
                 Padding = new Padding(8, 4, 8, 4),
-                Font = new Font("Microsoft YaHei UI", 8.5f)
+                Font = new Font("Microsoft YaHei UI", 9f)
             };
         }
 
@@ -953,14 +1060,14 @@ namespace DroidDeck.UI
                 Size = new Size(w, h),
                 BackColor = Color.FromArgb(26, 33, 48),
                 ForeColor = Color.FromArgb(226, 232, 240),
-                Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold)
+                Font = new Font("Microsoft YaHei UI", 9.2f, FontStyle.Bold)
             };
         }
 
         private Label AddInfoField(Control parent, string label, string value, int x, int y)
         {
-            var l = new Label { Text = label, Location = new Point(x, y), Size = new Size(150, 16), ForeColor = Color.FromArgb(148, 163, 184), Font = new Font("Microsoft YaHei UI", 8f) };
-            var v = new Label { Text = value, Location = new Point(x, y + 16), Size = new Size(156, 20), ForeColor = Color.White, Font = new Font("Microsoft YaHei UI", 9f, FontStyle.Bold) };
+            var l = new Label { Text = label, Location = new Point(x, y), Size = new Size(150, 17), ForeColor = Color.FromArgb(148, 163, 184), Font = new Font("Microsoft YaHei UI", 8.5f) };
+            var v = new Label { Text = value, Location = new Point(x, y + 17), Size = new Size(156, 20), ForeColor = Color.White, Font = new Font("Microsoft YaHei UI", 9.2f, FontStyle.Bold) };
             parent.Controls.Add(l);
             parent.Controls.Add(v);
             return v;
@@ -968,7 +1075,7 @@ namespace DroidDeck.UI
 
         private ComboBox AddCombo(Control parent, string label, int x, int y, int w, string[] items, int defaultIdx)
         {
-            var l = new Label { Text = label, Location = new Point(x, y), Size = new Size(w, 16), ForeColor = Color.FromArgb(148, 163, 184), Font = new Font("Microsoft YaHei UI", 8f) };
+            var l = new Label { Text = label, Location = new Point(x, y), Size = new Size(w, 17), ForeColor = Color.FromArgb(148, 163, 184), Font = new Font("Microsoft YaHei UI", 8.5f) };
             var c = new ComboBox
             {
                 Location = new Point(x, y + 18),

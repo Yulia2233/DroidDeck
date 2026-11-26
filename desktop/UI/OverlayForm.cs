@@ -122,8 +122,11 @@ namespace DroidDeck.UI
                     // ClickThrough (Touch mode): Alpha=0 passes 100% mouse events to scrcpy.exe.
                     // Interactive (Play/Edit mode): Alpha=1 captures all mouse events on OverlayForm.
                     g.Clear(_clickThrough ? Color.FromArgb(0, 0, 0, 0) : Color.FromArgb(1, 0, 0, 0));
+                    g.CompositingQuality = CompositingQuality.HighQuality;
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
                     g.SmoothingMode = SmoothingMode.AntiAlias;
-                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
 
                     if (_showOverlay || _input.Mode == ControlMode.Edit)
                     {

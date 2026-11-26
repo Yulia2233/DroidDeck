@@ -33,6 +33,7 @@ namespace DroidDeck.Core
         private int _bitRateM = 16;
         private bool _enableAudio = true;
         private bool _turnScreenOff = false;
+        private bool _antiAlias = true;
         private string _serial;
         private bool _isReconnecting;
         private string _lastErrorLine;
@@ -43,7 +44,7 @@ namespace DroidDeck.Core
             _hostPanel = hostPanel;
         }
 
-        public async Task StartAsync(string serial, int maxSize, int maxFps, int bitRateM, bool enableAudio, bool turnScreenOff)
+        public async Task StartAsync(string serial, int maxSize, int maxFps, int bitRateM, bool enableAudio, bool turnScreenOff, bool antiAlias = true)
         {
             StopInternal(false);
             WantRunning = true;
@@ -53,6 +54,7 @@ namespace DroidDeck.Core
             _bitRateM = bitRateM;
             _enableAudio = enableAudio;
             _turnScreenOff = turnScreenOff;
+            _antiAlias = antiAlias;
 
             await LaunchProcessAsync();
         }
@@ -65,8 +67,11 @@ namespace DroidDeck.Core
 
             // Keep native scrcpy control enabled so Touch mode gets 1:1 SDL3 clicks/swipes/scrolls directly,
             // while Play/Edit modes intercept via OverlayForm & RawInput/hooks above it.
+            // OpenGL renderer enables trilinear mipmap filtering to eliminate downscale jaggedness.
             string audioFlag = _enableAudio ? "" : "--no-audio";
-            string args = $"-s {_serial} --window-borderless --window-title=DroidDeckVideo --max-size={_maxSize} --max-fps={_maxFps} --video-bit-rate={_bitRateM}M --stay-awake --print-fps {audioFlag}".Trim();
+            string sizeFlag = _maxSize > 0 ? $"--max-size={_maxSize}" : "";
+            string renderFlag = _antiAlias ? "--render-driver=opengl" : "";
+            string args = $"-s {_serial} --window-borderless --window-title=DroidDeckVideo {sizeFlag} --max-fps={_maxFps} --video-bit-rate={_bitRateM}M --stay-awake --print-fps {renderFlag} {audioFlag}".Trim();
 
             var psi = new ProcessStartInfo
             {
@@ -140,12 +145,14 @@ namespace DroidDeck.Core
             if (embedded)
             {
                 RunningStateChanged?.Invoke(true);
-                StatusTextChanged?.Invoke($"🟢 原生 D3D11VA 硬解投屏中 ({_maxFps} FPS / {_bitRateM}M)");
+                string renderLabel = _antiAlias ? "OpenGL 抗锯齿" : "D3D11VA 硬解";
+                StatusTextChanged?.Invoke($"🟢 原生 {renderLabel}投屏中 ({_maxFps} FPS / {_bitRateM}M)");
             }
             else if (!proc.HasExited)
             {
                 RunningStateChanged?.Invoke(true);
-                StatusTextChanged?.Invoke($"🟢 原生 D3D11VA 硬解投屏中 ({_maxFps} FPS / {_bitRateM}M)");
+                string renderLabel = _antiAlias ? "OpenGL 抗锯齿" : "D3D11VA 硬解";
+                StatusTextChanged?.Invoke($"🟢 原生 {renderLabel}投屏中 ({_maxFps} FPS / {_bitRateM}M)");
             }
         }
 
