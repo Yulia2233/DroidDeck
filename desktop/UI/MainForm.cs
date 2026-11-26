@@ -587,13 +587,21 @@ namespace DroidDeck.UI
                 }
             };
 
+            bool overlayRefreshQueued = false;
             _input.OverlayVisualChanged += () =>
             {
-                if (_overlay != null && !_overlay.IsDisposed)
+                if (_overlay == null || _overlay.IsDisposed || !_overlay.Visible) return;
+                if (!_overlay.ShowOverlay && _input.Mode != ControlMode.Edit) return;
+                if (overlayRefreshQueued) return;
+                overlayRefreshQueued = true;
+                BeginInvoke(new Action(() =>
                 {
-                    if (_overlay.InvokeRequired) _overlay.BeginInvoke(new Action(() => _overlay.RefreshOverlay()));
-                    else _overlay.RefreshOverlay();
-                }
+                    overlayRefreshQueued = false;
+                    if (_overlay != null && !_overlay.IsDisposed && _overlay.Visible)
+                    {
+                        _overlay.RefreshOverlay();
+                    }
+                }));
             };
             _input.AimLockChanged += (locked) =>
             {

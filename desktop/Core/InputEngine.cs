@@ -43,6 +43,11 @@ namespace DroidDeck.Core
         private readonly Dictionary<int, ActiveTap> _activeTaps = new Dictionary<int, ActiveTap>();
         private int _aimCurX;
         private int _aimCurY;
+        private double _aimAccumDx;
+        private double _aimAccumDy;
+        private long _lastAimTick;
+        private static readonly long AimMinIntervalTicks = (long)(System.Diagnostics.Stopwatch.Frequency * 0.004); // 4ms (250Hz)
+        private static readonly uint SelfPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
         private bool _cursorHidden;
 
         // Edit mode drag state
@@ -108,7 +113,7 @@ namespace DroidDeck.Core
             if (ov != null && fg == ov.Handle) return true;
             uint fgPid;
             NativeMethods.GetWindowThreadProcessId(fg, out fgPid);
-            if (fgPid == (uint)System.Diagnostics.Process.GetCurrentProcess().Id) return true;
+            if (fgPid == SelfPid) return true;
             int scPid = _host.ScrcpyProcessId;
             return scPid > 0 && fgPid == (uint)scPid;
         }
@@ -370,23 +375,41 @@ namespace DroidDeck.Core
 
         private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            // When aim-locked in Play mode, intercept mouse clicks globally within the app
-            if (nCode >= 0 && Mode == ControlMode.Play && IsAimLocked && IsAppActiveForeground() && !IsBindingKey)
+            // Filter out WM_MOUSEMOVE immediately before foreground/PID checks (avoids 1000Hz overhead)
+            if (nCode >= 0 && Mode == ControlMode.Play && IsAimLocked && !IsBindingKey)
             {
                 int msg = wParam.ToInt32();
-                if (msg == NativeMethods.WM_LBUTTONDOWN) { if (HandlePlayKeyDown(-1)) return (IntPtr)1; }
-                else if (msg == NativeMethods.WM_LBUTTONUP) { if (HandlePlayKeyUp(-1)) return (IntPtr)1; }
-                else if (msg == NativeMethods.WM_RBUTTONDOWN) { if (HandlePlayKeyDown(-2)) return (IntPtr)1; }
-                else if (msg == NativeMethods.WM_RBUTTONUP) { if (HandlePlayKeyUp(-2)) return (IntPtr)1; }
-                else if (msg == NativeMethods.WM_MBUTTONDOWN) { if (HandlePlayKeyDown(-3)) return (IntPtr)1; }
-                else if (msg == NativeMethods.WM_MBUTTONUP) { if (HandlePlayKeyUp(-3)) return (IntPtr)1; }
-                else if (msg == NativeMethods.WM_XBUTTONDOWN || msg == NativeMethods.WM_XBUTTONUP)
+                if (msg == NativeMethods.WM_LBUTTONDOWN || msg == NativeMethods.WM_LBUTTONUP ||
+                    msg == NativeMethods.WM_RBUTTONDOWN || msg == NativeMethods.WM_RBUTTONUP ||
+                    msg == NativeMethods.WM_MBUTTONDOWN || msg == NativeMethods.WM_MBUTTONUP ||
+                    msg == NativeMethods.WM_XBUTTONDOWN || msg == NativeMethods.WM_XBUTTONUP)
                 {
-                    var info = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
-                    int xbtn = (int)((info.mouseData >> 16) & 0xFFFF);
-                    int vk = xbtn == 1 ? -4 : -5;
-                    bool handled = msg == NativeMethods.WM_XBUTTONDOWN ? HandlePlayKeyDown(vk) : HandlePlayKeyUp(vk);
-                    if (handled) return (IntPtr)1;
+                    if (IsAppActiveForeground())
+                    {
+                        if (msg == NativeMethods.WM_LBUTTONDOWN) { FlushPendingAimDelta(); if (HandlePlayKeyDown(-1)) return (IntPtr)1; }
+                        else if (msg == NativeMethods.WM_LBUTTONUP) { if (HandlePlayKeyUp(-1)) return (IntPtr)1; }
+                        else if (msg == NativeMethods.WM_RBUTTONDOWN) { FlushPendingAimDelta(); if (HandlePlayKeyDown(-2)) return (IntPtr)1; }
+                        else if (msg == NativeMethods.WM_RBUTTONUP) { if (HandlePlayKeyUp(-2)) return (IntPtr)1; }
+                        else if (msg == NativeMethods.WM_MBUTTONDOWN) { FlushPendingAimDelta(); if (HandlePlayKeyDown(-3)) return (IntPtr)1; }
+                        else if (msg == NativeMethods.WM_MBUTTONUP) { if (HandlePlayKeyUp(-3)) return (IntPtr)1; }
+                        else
+                        {
+                            var info = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
+                            int xbtn = (int)((info.mouseData >> 16) & 0xFFFF);
+                            int vk = xbtn == 1 ? -4 : -5;
+                            bool handled;
+                            if (msg == NativeMethods.WM_XBUTTONDOWN)
+                            {
+                                FlushPendingAimDelta();
+                                handled = HandlePlayKeyDown(vk);
+                            }
+                            else
+                            {
+                                handled = HandlePlayKeyUp(vk);
+                            }
+                            if (handled) return (IntPtr)1;
+                        }
+                    }
                 }
             }
 
@@ -558,6 +581,9 @@ namespace DroidDeck.Core
                 }
 
                 IsAimLocked = true;
+                _aimAccumDx = 0;
+                _aimAccumDy = 0;
+                _lastAimTick = 0;
                 _aimCurX = (int)Math.Round(aim.X * _host.ControlWidth);
                 _aimCurY = (int)Math.Round(aim.Y * _host.ControlHeight);
                 _control.InjectTouch(0, POINTER_AIM, _aimCurX, _aimCurY, _host.ControlWidth, _host.ControlHeight);
@@ -565,7 +591,11 @@ namespace DroidDeck.Core
             else
             {
                 if (!IsAimLocked) return;
+                FlushPendingAimDelta();
                 IsAimLocked = false;
+                _aimAccumDx = 0;
+                _aimAccumDy = 0;
+                _lastAimTick = 0;
                 NativeMethods.ClipCursor(IntPtr.Zero);
                 if (_cursorHidden)
                 {
@@ -587,11 +617,31 @@ namespace DroidDeck.Core
 
         private void HandleAimDelta(int dx, int dy)
         {
+            _aimAccumDx += dx * MouseSensitivity * 1.5;
+            _aimAccumDy += dy * MouseSensitivity * 1.5;
+
+            long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool largeJump = Math.Abs(_aimAccumDx) >= 6.0 || Math.Abs(_aimAccumDy) >= 6.0;
+            if (!largeJump && _lastAimTick != 0 && (nowTicks - _lastAimTick) < AimMinIntervalTicks)
+            {
+                return;
+            }
+            FlushPendingAimDelta(nowTicks);
+        }
+
+        private void FlushPendingAimDelta(long? timestampTicks = null)
+        {
+            int stepX = (int)Math.Truncate(_aimAccumDx);
+            int stepY = (int)Math.Truncate(_aimAccumDy);
+            if (stepX == 0 && stepY == 0) return;
+
             var aim = ActivePreset?.Items.FirstOrDefault(i => i.Type == "aim");
             if (aim == null) return;
 
-            int stepX = (int)Math.Round(dx * MouseSensitivity * 1.5);
-            int stepY = (int)Math.Round(dy * MouseSensitivity * 1.5);
+            _aimAccumDx -= stepX;
+            _aimAccumDy -= stepY;
+            _lastAimTick = timestampTicks ?? System.Diagnostics.Stopwatch.GetTimestamp();
+
             _aimCurX += stepX;
             _aimCurY += stepY;
 
