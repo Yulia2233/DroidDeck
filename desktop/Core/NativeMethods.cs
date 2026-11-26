@@ -40,6 +40,8 @@ namespace DroidDeck.Core
         public const int WM_MBUTTONDOWN = 0x0207;
         public const int WM_MBUTTONUP = 0x0208;
         public const int WM_MOUSEWHEEL = 0x020A;
+        public const int WM_XBUTTONDOWN = 0x020B;
+        public const int WM_XBUTTONUP = 0x020C;
 
         public const uint RIDEV_INPUTSINK = 0x00000100;
         public const uint RID_INPUT = 0x10000003;

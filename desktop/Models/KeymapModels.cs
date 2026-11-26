@@ -154,11 +154,15 @@ namespace DroidDeck.Models
         {
             if (vk == -1) return "左键";
             if (vk == -2) return "右键";
+            if (vk == -3) return "中键";
+            if (vk == -4) return "侧键4";
+            if (vk == -5) return "侧键5";
             if (vk == 0x20) return "Space";
             if (vk == 0x09) return "Tab";
             if (vk == 0xC0) return "~";
             if (vk == 0xA0 || vk == 0xA1 || vk == 0x10) return "Shift";
             if (vk == 0xA2 || vk == 0xA3 || vk == 0x11) return "Ctrl";
+            if (vk == 0xA4 || vk == 0xA5 || vk == 0x12) return "Alt";
             if (vk >= 0x30 && vk <= 0x39) return ((char)vk).ToString();
             if (vk >= 0x41 && vk <= 0x5A) return ((char)vk).ToString();
             if (vk >= 0x70 && vk <= 0x7B) return "F" + (vk - 0x6F);

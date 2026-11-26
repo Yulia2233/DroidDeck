@@ -529,12 +529,14 @@ namespace DroidDeck.UI
                         _input.ActivePreset?.Items.Remove(item);
                         _overlay.RefreshOverlay();
                     }
+                    KeymapRepository.Save(_store);
                 }
             };
             _input.EditItemDeleted += (item) =>
             {
                 _input.ActivePreset?.Items.Remove(item);
                 _overlay.RefreshOverlay();
+                KeymapRepository.Save(_store);
             };
 
             Move += (s, e) => SyncOverlay();
@@ -583,6 +585,7 @@ namespace DroidDeck.UI
             FormClosing += (s, e) =>
             {
                 _pollTimer?.Stop();
+                try { KeymapRepository.Save(_store); } catch { }
                 _input?.Dispose();
                 _host?.Dispose();
                 _control?.Dispose();
@@ -785,13 +788,24 @@ namespace DroidDeck.UI
 
         private void AddAimZone()
         {
-            if (_input.ActivePreset?.Items.Exists(i => i.Type == "aim") == true)
+            var existing = _input.ActivePreset?.Items.Find(i => i.Type == "aim");
+            if (existing != null)
             {
-                MessageBox.Show("当前预设已有准星视角区，请直接拖拽调整位置。", "DroidDeck");
+                using (var dlg = new KeyBindDialog(existing, _input, () => _overlay.RefreshOverlay()))
+                {
+                    if (dlg.ShowDialog(this) == DialogResult.Abort)
+                    {
+                        _input.ActivePreset?.Items.Remove(existing);
+                        _overlay.RefreshOverlay();
+                    }
+                    KeymapRepository.Save(_store);
+                }
                 return;
             }
-            _input.ActivePreset?.Items.Add(new KeymapItem { Id = "aim_" + DateTime.Now.Ticks, Type = "aim", X = 0.66, Y = 0.48, VirtualKey = 0xC0, KeyCode = "Oemtilde", KeyName = "~", Label = "准星视角" });
+            var aimItem = new KeymapItem { Id = "aim_" + DateTime.Now.Ticks, Type = "aim", X = 0.66, Y = 0.48, VirtualKey = 0xC0, KeyCode = "Oemtilde", KeyName = "~", Label = "视角中心" };
+            _input.ActivePreset?.Items.Add(aimItem);
             _overlay.RefreshOverlay();
+            KeymapRepository.Save(_store);
         }
 
         private void ResetPreset()

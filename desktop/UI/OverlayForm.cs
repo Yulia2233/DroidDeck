@@ -209,17 +209,36 @@ namespace DroidDeck.UI
                     }
                     else if (item.Type == "aim")
                     {
+                        if (_input.Mode == ControlMode.Edit)
+                        {
+                            float halfW = Math.Max(40f, Width * 0.22f);
+                            float halfH = Math.Max(40f, Height * 0.26f);
+                            float bx1 = Math.Max(Width * 0.05f, cx - halfW);
+                            float bx2 = Math.Min(Width * 0.95f, cx + halfW);
+                            float by1 = Math.Max(Height * 0.06f, cy - halfH);
+                            float by2 = Math.Min(Height * 0.94f, cy + halfH);
+                            using (var zonePen = new Pen(Color.FromArgb(140, 16, 185, 129), 1.5f) { DashStyle = DashStyle.Dot })
+                            {
+                                g.DrawRectangle(zonePen, bx1, by1, Math.Max(10, bx2 - bx1), Math.Max(10, by2 - by1));
+                            }
+                        }
+
                         float r = 30f;
                         bool locked = _input.IsAimLocked;
                         Color fillC = locked ? Color.FromArgb(200, 16, 185, 129) : Color.FromArgb(150, 15, 23, 42);
                         Color penC = Color.FromArgb(230, 16, 185, 129);
                         using (var fill = new SolidBrush(fillC))
                         using (var pen = new Pen(penC, 2.2f))
+                        using (var crossPen = new Pen(Color.FromArgb(190, 110, 231, 183), 1.4f))
                         {
                             g.FillEllipse(fill, cx - r, cy - r, r * 2, r * 2);
                             g.DrawEllipse(pen, cx - r, cy - r, r * 2, r * 2);
+                            g.DrawLine(crossPen, cx - r - 8, cy, cx - r + 4, cy);
+                            g.DrawLine(crossPen, cx + r - 4, cy, cx + r + 8, cy);
+                            g.DrawLine(crossPen, cx, cy - r - 8, cx, cy - r + 4);
+                            g.DrawLine(crossPen, cx, cy + r - 4, cx, cy + r + 8);
                             g.DrawString("🎯 " + (item.KeyName ?? "~"), fontKey, Brushes.White, new RectangleF(cx - r, cy - 14, r * 2, 20), sf);
-                            g.DrawString(locked ? "已锁定" : (item.Label ?? "视角"), fontLabel, Brushes.LightGreen, new RectangleF(cx - r, cy + 4, r * 2, 16), sf);
+                            g.DrawString(locked ? "已锁定" : (item.Label ?? "视角中心"), fontLabel, Brushes.LightGreen, new RectangleF(cx - r, cy + 4, r * 2, 16), sf);
                         }
                     }
                     else

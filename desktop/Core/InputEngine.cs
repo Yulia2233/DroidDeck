@@ -42,6 +42,7 @@ namespace DroidDeck.Core
         private readonly Dictionary<int, ActiveTap> _activeTaps = new Dictionary<int, ActiveTap>();
         private int _aimCurX;
         private int _aimCurY;
+        private bool _cursorHidden;
 
         // Edit mode drag state
         private KeymapItem _dragItem;
@@ -128,8 +129,8 @@ namespace DroidDeck.Core
                     {
                         int dx = raw.mouse.lLastX;
                         int dy = raw.mouse.lLastY;
-                        // Filter out absolute-pointer jumps or hardware glitches
-                        if (raw.mouse.usFlags == 0 && (dx != 0 || dy != 0) && Math.Abs(dx) < 250 && Math.Abs(dy) < 250)
+                        // Filter out absolute-pointer jumps (MOUSE_MOVE_ABSOLUTE = 0x01) or hardware glitches
+                        if ((raw.mouse.usFlags & 0x01) == 0 && (dx != 0 || dy != 0) && Math.Abs(dx) < 250 && Math.Abs(dy) < 250)
                         {
                             HandleAimDelta(dx, dy);
                         }
@@ -153,12 +154,14 @@ namespace DroidDeck.Core
 
                 if (IsBindingKey)
                 {
-                    if (isDown)
+                    // Allow typing label text inside KeyBindDialog when focused on the TextBox,
+                    // otherwise capture keyboard key immediately (except Esc cancels dialog)
+                    if (isDown && !(Form.ActiveForm?.ActiveControl is TextBox))
                     {
                         _mainForm.BeginInvoke(new Action(() => KeyCapturedForBind?.Invoke(vk)));
                         return (IntPtr)1;
                     }
-                    return (IntPtr)1;
+                    return NativeMethods.CallNextHookEx(_kbHook, nCode, wParam, lParam);
                 }
 
                 if (Mode == ControlMode.Play)
@@ -220,6 +223,18 @@ namespace DroidDeck.Core
                 else if (button == MouseButtons.Right)
                 {
                     HandlePlayKeyDown(-2);
+                }
+                else if (button == MouseButtons.Middle)
+                {
+                    HandlePlayKeyDown(-3);
+                }
+                else if (button == MouseButtons.XButton1)
+                {
+                    HandlePlayKeyDown(-4);
+                }
+                else if (button == MouseButtons.XButton2)
+                {
+                    HandlePlayKeyDown(-5);
                 }
             }
             else if (Mode == ControlMode.Edit && inVideo)
@@ -302,6 +317,18 @@ namespace DroidDeck.Core
                 {
                     HandlePlayKeyUp(-2);
                 }
+                else if (button == MouseButtons.Middle)
+                {
+                    HandlePlayKeyUp(-3);
+                }
+                else if (button == MouseButtons.XButton1)
+                {
+                    HandlePlayKeyUp(-4);
+                }
+                else if (button == MouseButtons.XButton2)
+                {
+                    HandlePlayKeyUp(-5);
+                }
             }
             else if (Mode == ControlMode.Edit && button == MouseButtons.Left && _dragItem != null)
             {
@@ -326,25 +353,23 @@ namespace DroidDeck.Core
 
         private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
-            // When aim-locked in Play mode, intercept left/right clicks globally within the app
+            // When aim-locked in Play mode, intercept mouse clicks globally within the app
             if (nCode >= 0 && Mode == ControlMode.Play && IsAimLocked && IsAppActiveForeground() && !IsBindingKey)
             {
                 int msg = wParam.ToInt32();
-                if (msg == NativeMethods.WM_LBUTTONDOWN)
+                if (msg == NativeMethods.WM_LBUTTONDOWN) { if (HandlePlayKeyDown(-1)) return (IntPtr)1; }
+                else if (msg == NativeMethods.WM_LBUTTONUP) { if (HandlePlayKeyUp(-1)) return (IntPtr)1; }
+                else if (msg == NativeMethods.WM_RBUTTONDOWN) { if (HandlePlayKeyDown(-2)) return (IntPtr)1; }
+                else if (msg == NativeMethods.WM_RBUTTONUP) { if (HandlePlayKeyUp(-2)) return (IntPtr)1; }
+                else if (msg == NativeMethods.WM_MBUTTONDOWN) { if (HandlePlayKeyDown(-3)) return (IntPtr)1; }
+                else if (msg == NativeMethods.WM_MBUTTONUP) { if (HandlePlayKeyUp(-3)) return (IntPtr)1; }
+                else if (msg == NativeMethods.WM_XBUTTONDOWN || msg == NativeMethods.WM_XBUTTONUP)
                 {
-                    if (HandlePlayKeyDown(-1)) return (IntPtr)1;
-                }
-                else if (msg == NativeMethods.WM_LBUTTONUP)
-                {
-                    if (HandlePlayKeyUp(-1)) return (IntPtr)1;
-                }
-                else if (msg == NativeMethods.WM_RBUTTONDOWN)
-                {
-                    if (HandlePlayKeyDown(-2)) return (IntPtr)1;
-                }
-                else if (msg == NativeMethods.WM_RBUTTONUP)
-                {
-                    if (HandlePlayKeyUp(-2)) return (IntPtr)1;
+                    var info = Marshal.PtrToStructure<NativeMethods.MSLLHOOKSTRUCT>(lParam);
+                    int xbtn = (int)((info.mouseData >> 16) & 0xFFFF);
+                    int vk = xbtn == 1 ? -4 : -5;
+                    bool handled = msg == NativeMethods.WM_XBUTTONDOWN ? HandlePlayKeyDown(vk) : HandlePlayKeyUp(vk);
+                    if (handled) return (IntPtr)1;
                 }
             }
 
@@ -496,16 +521,24 @@ namespace DroidDeck.Core
             {
                 if (IsAimLocked) return;
                 Rectangle rect = _getVideoScreenRect();
+                if (rect.Width < 20 || rect.Height < 20) return;
                 var nativeRect = new NativeMethods.RECT
                 {
-                    Left = rect.Left + 4,
-                    Top = rect.Top + 4,
-                    Right = rect.Right - 4,
-                    Bottom = rect.Bottom - 4
+                    Left = rect.Left + 8,
+                    Top = rect.Top + 8,
+                    Right = rect.Right - 8,
+                    Bottom = rect.Bottom - 8
                 };
                 NativeMethods.ClipCursor(ref nativeRect);
-                NativeMethods.SetCursorPos(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
-                NativeMethods.ShowCursor(false);
+                // Lock Windows cursor near the configured aim center inside the video viewport
+                int lockScrX = Math.Max(nativeRect.Left, Math.Min(nativeRect.Right, rect.Left + (int)Math.Round(aim.X * rect.Width)));
+                int lockScrY = Math.Max(nativeRect.Top, Math.Min(nativeRect.Bottom, rect.Top + (int)Math.Round(aim.Y * rect.Height)));
+                NativeMethods.SetCursorPos(lockScrX, lockScrY);
+                if (!_cursorHidden)
+                {
+                    NativeMethods.ShowCursor(false);
+                    _cursorHidden = true;
+                }
 
                 IsAimLocked = true;
                 _aimCurX = (int)Math.Round(aim.X * _host.VideoWidth);
@@ -517,7 +550,11 @@ namespace DroidDeck.Core
                 if (!IsAimLocked) return;
                 IsAimLocked = false;
                 NativeMethods.ClipCursor(IntPtr.Zero);
-                NativeMethods.ShowCursor(true);
+                if (_cursorHidden)
+                {
+                    NativeMethods.ShowCursor(true);
+                    _cursorHidden = false;
+                }
                 _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
             }
             AimLockChanged?.Invoke(IsAimLocked);
@@ -534,17 +571,19 @@ namespace DroidDeck.Core
             _aimCurX += stepX;
             _aimCurY += stepY;
 
-            // Safe look-zone inside right half of screen to avoid hitting edge buttons
-            int minX = (int)Math.Round(_host.VideoWidth * 0.42);
-            int maxX = (int)Math.Round(_host.VideoWidth * 0.88);
-            int minY = (int)Math.Round(_host.VideoHeight * 0.16);
-            int maxY = (int)Math.Round(_host.VideoHeight * 0.84);
+            // Keep safe swipe box centered dynamically around the user-configured (aim.X, aim.Y)
+            int cx = (int)Math.Round(aim.X * _host.VideoWidth);
+            int cy = (int)Math.Round(aim.Y * _host.VideoHeight);
+            int halfW = Math.Max(80, (int)Math.Round(_host.VideoWidth * 0.22));
+            int halfH = Math.Max(80, (int)Math.Round(_host.VideoHeight * 0.26));
+            int minX = Math.Max((int)Math.Round(_host.VideoWidth * 0.05), cx - halfW);
+            int maxX = Math.Min((int)Math.Round(_host.VideoWidth * 0.95), cx + halfW);
+            int minY = Math.Max((int)Math.Round(_host.VideoHeight * 0.06), cy - halfH);
+            int maxY = Math.Min((int)Math.Round(_host.VideoHeight * 0.94), cy + halfH);
 
             if (_aimCurX < minX || _aimCurX > maxX || _aimCurY < minY || _aimCurY > maxY)
             {
                 _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
-                int cx = (int)Math.Round(aim.X * _host.VideoWidth);
-                int cy = (int)Math.Round(aim.Y * _host.VideoHeight);
                 _control.InjectTouch(0, POINTER_AIM, cx, cy, _host.VideoWidth, _host.VideoHeight);
                 _aimCurX = cx + stepX;
                 _aimCurY = cy + stepY;
