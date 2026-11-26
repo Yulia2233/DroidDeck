@@ -209,7 +209,7 @@ namespace DroidDeck.Core
                     var devPt = ScreenToDevice(screenPt, videoRect);
                     _lastMoveDevPt = devPt;
                     _lastMoveTick = Environment.TickCount;
-                    _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight);
                 }
                 else if (button == MouseButtons.Right && inVideo)
                 {
@@ -236,7 +236,7 @@ namespace DroidDeck.Core
                         var devPt = ScreenToDevice(screenPt, videoRect);
                         _lastMoveDevPt = devPt;
                         _lastMoveTick = Environment.TickCount;
-                        _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
+                        _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight);
                     }
                     return;
                 }
@@ -248,7 +248,7 @@ namespace DroidDeck.Core
                     var devPt = ScreenToDevice(screenPt, videoRect);
                     _lastMoveDevPt = devPt;
                     _lastMoveTick = Environment.TickCount;
-                    _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(0, POINTER_TOUCH, devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight);
                 }
             }
             else if (Mode == ControlMode.Edit && inVideo)
@@ -284,7 +284,7 @@ namespace DroidDeck.Core
                 {
                     _lastMoveDevPt = devPt;
                     _lastMoveTick = now;
-                    _control.InjectTouch(2, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(2, POINTER_TOUCH, devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight);
                 }
             }
             else if (Mode == ControlMode.Edit && _dragItem != null)
@@ -312,7 +312,7 @@ namespace DroidDeck.Core
                 {
                     _touchDragging = false;
                     var devPt = ScreenToDevice(screenPt, videoRect);
-                    _control.InjectTouch(1, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(1, POINTER_TOUCH, devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight);
                 }
             }
             else if (Mode == ControlMode.Play && !IsAimLocked)
@@ -323,7 +323,7 @@ namespace DroidDeck.Core
                 {
                     _touchDragging = false;
                     var devPt = ScreenToDevice(screenPt, videoRect);
-                    _control.InjectTouch(1, POINTER_TOUCH, devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(1, POINTER_TOUCH, devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight);
                 }
             }
             else if (Mode == ControlMode.Edit && button == MouseButtons.Left && _dragItem != null)
@@ -365,7 +365,7 @@ namespace DroidDeck.Core
             Rectangle videoRect = _getVideoScreenRect();
             if (!videoRect.Contains(screenPt)) return;
             var devPt = ScreenToDevice(screenPt, videoRect);
-            _control.InjectScroll(devPt.X, devPt.Y, _host.VideoWidth, _host.VideoHeight, 0f, delta > 0 ? 1f : -1f);
+            _control.InjectScroll(devPt.X, devPt.Y, _host.ControlWidth, _host.ControlHeight, 0f, delta > 0 ? 1f : -1f);
         }
 
         private IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -413,7 +413,7 @@ namespace DroidDeck.Core
         {
             double nx = Math.Max(0, Math.Min(1, (screenPt.X - videoRect.Left) / (double)Math.Max(1, videoRect.Width)));
             double ny = Math.Max(0, Math.Min(1, (screenPt.Y - videoRect.Top) / (double)Math.Max(1, videoRect.Height)));
-            return new Point((int)Math.Round(nx * _host.VideoWidth), (int)Math.Round(ny * _host.VideoHeight));
+            return new Point((int)Math.Round(nx * _host.ControlWidth), (int)Math.Round(ny * _host.ControlHeight));
         }
 
         private bool HandlePlayKeyDown(int vk)
@@ -447,11 +447,11 @@ namespace DroidDeck.Core
             if (_activeTaps.ContainsKey(vk)) return true;
             var item = ActivePreset.Items[idx];
             int pointerId = POINTER_TAP_BASE + idx;
-            int x = (int)Math.Round(item.X * _host.VideoWidth);
-            int y = (int)Math.Round(item.Y * _host.VideoHeight);
+            int x = (int)Math.Round(item.X * _host.ControlWidth);
+            int y = (int)Math.Round(item.Y * _host.ControlHeight);
 
             _activeTaps[vk] = new ActiveTap { PointerId = pointerId, X = x, Y = y, ItemId = item.Id };
-            _control.InjectTouch(0, pointerId, x, y, _host.VideoWidth, _host.VideoHeight);
+            _control.InjectTouch(0, pointerId, x, y, _host.ControlWidth, _host.ControlHeight);
             PressedItemIds.Add(item.Id);
             OverlayVisualChanged?.Invoke();
             return true;
@@ -476,7 +476,7 @@ namespace DroidDeck.Core
             if (!_activeTaps.TryGetValue(vk, out tap)) return false;
             _activeTaps.Remove(vk);
 
-            _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.VideoWidth, _host.VideoHeight);
+            _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.ControlWidth, _host.ControlHeight);
             PressedItemIds.Remove(tap.ItemId);
             OverlayVisualChanged?.Invoke();
             return true;
@@ -499,16 +499,16 @@ namespace DroidDeck.Core
             int dx = (_wasd[3] ? 1 : 0) - (_wasd[1] ? 1 : 0);
             int dy = (_wasd[2] ? 1 : 0) - (_wasd[0] ? 1 : 0);
 
-            int cx = (int)Math.Round(joy.X * _host.VideoWidth);
-            int cy = (int)Math.Round(joy.Y * _host.VideoHeight);
-            int rPx = (int)Math.Round(joy.Radius * Math.Min(_host.VideoWidth, _host.VideoHeight));
+            int cx = (int)Math.Round(joy.X * _host.ControlWidth);
+            int cy = (int)Math.Round(joy.Y * _host.ControlHeight);
+            int rPx = (int)Math.Round(joy.Radius * Math.Min(_host.ControlWidth, _host.ControlHeight));
 
             if (dx == 0 && dy == 0)
             {
                 if (_joystickActive)
                 {
                     _joystickActive = false;
-                    _control.InjectTouch(1, POINTER_JOYSTICK, cx, cy, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(1, POINTER_JOYSTICK, cx, cy, _host.ControlWidth, _host.ControlHeight);
                 }
                 JoystickOffset = PointF.Empty;
                 OverlayVisualChanged?.Invoke();
@@ -524,9 +524,9 @@ namespace DroidDeck.Core
             if (!_joystickActive)
             {
                 _joystickActive = true;
-                _control.InjectTouch(0, POINTER_JOYSTICK, cx, cy, _host.VideoWidth, _host.VideoHeight);
+                _control.InjectTouch(0, POINTER_JOYSTICK, cx, cy, _host.ControlWidth, _host.ControlHeight);
             }
-            _control.InjectTouch(2, POINTER_JOYSTICK, tx, ty, _host.VideoWidth, _host.VideoHeight);
+            _control.InjectTouch(2, POINTER_JOYSTICK, tx, ty, _host.ControlWidth, _host.ControlHeight);
             JoystickOffset = new PointF((float)ndx, (float)ndy);
             OverlayVisualChanged?.Invoke();
         }
@@ -558,9 +558,9 @@ namespace DroidDeck.Core
                 }
 
                 IsAimLocked = true;
-                _aimCurX = (int)Math.Round(aim.X * _host.VideoWidth);
-                _aimCurY = (int)Math.Round(aim.Y * _host.VideoHeight);
-                _control.InjectTouch(0, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
+                _aimCurX = (int)Math.Round(aim.X * _host.ControlWidth);
+                _aimCurY = (int)Math.Round(aim.Y * _host.ControlHeight);
+                _control.InjectTouch(0, POINTER_AIM, _aimCurX, _aimCurY, _host.ControlWidth, _host.ControlHeight);
             }
             else
             {
@@ -572,12 +572,12 @@ namespace DroidDeck.Core
                     NativeMethods.ShowCursor(true);
                     _cursorHidden = false;
                 }
-                _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
+                _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.ControlWidth, _host.ControlHeight);
                 foreach (var mouseVk in _activeTaps.Keys.Where(k => k < 0).ToList())
                 {
                     var tap = _activeTaps[mouseVk];
                     _activeTaps.Remove(mouseVk);
-                    _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.ControlWidth, _host.ControlHeight);
                     PressedItemIds.Remove(tap.ItemId);
                 }
             }
@@ -596,26 +596,26 @@ namespace DroidDeck.Core
             _aimCurY += stepY;
 
             // Keep safe swipe box centered dynamically around the user-configured (aim.X, aim.Y)
-            int cx = (int)Math.Round(aim.X * _host.VideoWidth);
-            int cy = (int)Math.Round(aim.Y * _host.VideoHeight);
-            int halfW = Math.Max(80, (int)Math.Round(_host.VideoWidth * 0.22));
-            int halfH = Math.Max(80, (int)Math.Round(_host.VideoHeight * 0.26));
-            int minX = Math.Max((int)Math.Round(_host.VideoWidth * 0.05), cx - halfW);
-            int maxX = Math.Min((int)Math.Round(_host.VideoWidth * 0.95), cx + halfW);
-            int minY = Math.Max((int)Math.Round(_host.VideoHeight * 0.06), cy - halfH);
-            int maxY = Math.Min((int)Math.Round(_host.VideoHeight * 0.94), cy + halfH);
+            int cx = (int)Math.Round(aim.X * _host.ControlWidth);
+            int cy = (int)Math.Round(aim.Y * _host.ControlHeight);
+            int halfW = Math.Max(80, (int)Math.Round(_host.ControlWidth * 0.22));
+            int halfH = Math.Max(80, (int)Math.Round(_host.ControlHeight * 0.26));
+            int minX = Math.Max((int)Math.Round(_host.ControlWidth * 0.05), cx - halfW);
+            int maxX = Math.Min((int)Math.Round(_host.ControlWidth * 0.95), cx + halfW);
+            int minY = Math.Max((int)Math.Round(_host.ControlHeight * 0.06), cy - halfH);
+            int maxY = Math.Min((int)Math.Round(_host.ControlHeight * 0.94), cy + halfH);
 
             if (_aimCurX < minX || _aimCurX > maxX || _aimCurY < minY || _aimCurY > maxY)
             {
-                _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
-                _control.InjectTouch(0, POINTER_AIM, cx, cy, _host.VideoWidth, _host.VideoHeight);
+                _control.InjectTouch(1, POINTER_AIM, _aimCurX, _aimCurY, _host.ControlWidth, _host.ControlHeight);
+                _control.InjectTouch(0, POINTER_AIM, cx, cy, _host.ControlWidth, _host.ControlHeight);
                 _aimCurX = cx + stepX;
                 _aimCurY = cy + stepY;
-                _control.InjectTouch(2, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
+                _control.InjectTouch(2, POINTER_AIM, _aimCurX, _aimCurY, _host.ControlWidth, _host.ControlHeight);
                 return;
             }
 
-            _control.InjectTouch(2, POINTER_AIM, _aimCurX, _aimCurY, _host.VideoWidth, _host.VideoHeight);
+            _control.InjectTouch(2, POINTER_AIM, _aimCurX, _aimCurY, _host.ControlWidth, _host.ControlHeight);
         }
 
         public void ReleaseAllInputs()
@@ -624,7 +624,7 @@ namespace DroidDeck.Core
             if (_touchDragging)
             {
                 _touchDragging = false;
-                _control.InjectTouch(1, POINTER_TOUCH, _lastMoveDevPt.X, _lastMoveDevPt.Y, _host.VideoWidth, _host.VideoHeight);
+                _control.InjectTouch(1, POINTER_TOUCH, _lastMoveDevPt.X, _lastMoveDevPt.Y, _host.ControlWidth, _host.ControlHeight);
             }
             Array.Clear(_wasd, 0, _wasd.Length);
             if (_joystickActive)
@@ -632,11 +632,11 @@ namespace DroidDeck.Core
                 _joystickActive = false;
                 var joy = ActivePreset?.Items.FirstOrDefault(i => i.Type == "joystick");
                 if (joy != null)
-                    _control.InjectTouch(1, POINTER_JOYSTICK, (int)(joy.X * _host.VideoWidth), (int)(joy.Y * _host.VideoHeight), _host.VideoWidth, _host.VideoHeight);
+                    _control.InjectTouch(1, POINTER_JOYSTICK, (int)(joy.X * _host.ControlWidth), (int)(joy.Y * _host.ControlHeight), _host.ControlWidth, _host.ControlHeight);
             }
             foreach (var tap in _activeTaps.Values.ToList())
             {
-                _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.VideoWidth, _host.VideoHeight);
+                _control.InjectTouch(1, tap.PointerId, tap.X, tap.Y, _host.ControlWidth, _host.ControlHeight);
             }
             _activeTaps.Clear();
             PressedItemIds.Clear();

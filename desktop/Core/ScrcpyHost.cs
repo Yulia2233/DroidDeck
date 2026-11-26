@@ -23,6 +23,33 @@ namespace DroidDeck.Core
         public int VideoWidth { get; private set; } = 1200;
         public int VideoHeight { get; private set; } = 2670;
 
+        /// <summary>
+        /// scrcpy-server control channel (video=false) has displayData == null,
+        /// so Controller.getEventPointAndDisplayId injects raw physical display pixels
+        /// matching current device orientation rather than scaled video texture pixels.
+        /// </summary>
+        public int ControlWidth
+        {
+            get
+            {
+                var st = _adb.CurrentStatus;
+                int pw = st != null && st.PhysicalWidth > 0 ? st.PhysicalWidth : 1200;
+                int ph = st != null && st.PhysicalHeight > 0 ? st.PhysicalHeight : 2670;
+                return VideoWidth > VideoHeight ? Math.Max(pw, ph) : Math.Min(pw, ph);
+            }
+        }
+
+        public int ControlHeight
+        {
+            get
+            {
+                var st = _adb.CurrentStatus;
+                int pw = st != null && st.PhysicalWidth > 0 ? st.PhysicalWidth : 1200;
+                int ph = st != null && st.PhysicalHeight > 0 ? st.PhysicalHeight : 2670;
+                return VideoWidth > VideoHeight ? Math.Min(pw, ph) : Math.Max(pw, ph);
+            }
+        }
+
         public event Action<int, int> VideoDimensionsChanged;
         public event Action<int> FpsUpdated;
         public event Action<string> StatusTextChanged;

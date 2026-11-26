@@ -17,6 +17,8 @@ namespace DroidDeck.Core
         public string HyperOsVersion { get; set; }
         public string AndroidVersion { get; set; }
         public string Resolution { get; set; }
+        public int PhysicalWidth { get; set; } = 1200;
+        public int PhysicalHeight { get; set; } = 2670;
         public int? BatteryLevel { get; set; }
         public bool UsbDetected { get; set; }
     }
@@ -202,6 +204,8 @@ namespace DroidDeck.Core
                     HyperOsVersion = _lastStatus.HyperOsVersion,
                     AndroidVersion = _lastStatus.AndroidVersion,
                     Resolution = _lastStatus.Resolution,
+                    PhysicalWidth = _lastStatus.PhysicalWidth,
+                    PhysicalHeight = _lastStatus.PhysicalHeight,
                     BatteryLevel = _lastStatus.BatteryLevel
                 };
 
@@ -225,11 +229,27 @@ namespace DroidDeck.Core
                         try
                         {
                             string wm = await RunAdbAsync($"-s {serial} shell wm size", 3000);
-                            var m = Regex.Match(wm, @"(\d+x\d+)");
-                            st.Resolution = m.Success ? m.Groups[1].Value : "1200x2670";
+                            var m = Regex.Match(wm, @"Override size:\s*(\d+)x(\d+)");
+                            if (!m.Success) m = Regex.Match(wm, @"Physical size:\s*(\d+)x(\d+)");
+                            if (!m.Success) m = Regex.Match(wm, @"(\d+)x(\d+)");
+                            int pw, ph;
+                            if (m.Success && int.TryParse(m.Groups[1].Value, out pw) && int.TryParse(m.Groups[2].Value, out ph) && pw > 0 && ph > 0)
+                            {
+                                st.PhysicalWidth = pw;
+                                st.PhysicalHeight = ph;
+                                st.Resolution = $"{pw}x{ph}";
+                            }
+                            else
+                            {
+                                st.PhysicalWidth = 1200;
+                                st.PhysicalHeight = 2670;
+                                st.Resolution = "1200x2670";
+                            }
                         }
                         catch
                         {
+                            st.PhysicalWidth = 1200;
+                            st.PhysicalHeight = 2670;
                             st.Resolution = "1200x2670";
                         }
                         _cachedSerial = serial;
