@@ -36,6 +36,7 @@ namespace DroidDeck.Models
     {
         public string ActivePresetKey { get; set; } = "moba";
         public double MouseSensitivity { get; set; } = 1.2;
+        public int EngineProfileIndex { get; set; } = 0; // 0=OpenGL抗锯齿, 1=H.265极限高帧+D3D11VA, 2=H.264硬解, 3=H.265+OpenGL
         public Dictionary<string, KeymapPreset> Presets { get; set; } = new Dictionary<string, KeymapPreset>();
     }
 

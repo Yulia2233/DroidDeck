@@ -8,6 +8,14 @@ using System.Windows.Forms;
 
 namespace DroidDeck.Core
 {
+    public enum StreamEngineProfile
+    {
+        OpenGlAntiAliasH264 = 0,
+        HighFpsHevcD3d11 = 1,
+        BalancedH264D3d11 = 2,
+        HighFpsHevcOpenGl = 3
+    }
+
     public class ScrcpyHost : IDisposable
     {
         private readonly AdbManager _adb;
@@ -60,7 +68,7 @@ namespace DroidDeck.Core
         private int _bitRateM = 16;
         private bool _enableAudio = true;
         private bool _turnScreenOff = false;
-        private bool _antiAlias = true;
+        private StreamEngineProfile _engineProfile = StreamEngineProfile.OpenGlAntiAliasH264;
         private string _serial;
         private bool _isReconnecting;
         private string _lastErrorLine;
@@ -71,7 +79,7 @@ namespace DroidDeck.Core
             _hostPanel = hostPanel;
         }
 
-        public async Task StartAsync(string serial, int maxSize, int maxFps, int bitRateM, bool enableAudio, bool turnScreenOff, bool antiAlias = true)
+        public async Task StartAsync(string serial, int maxSize, int maxFps, int bitRateM, bool enableAudio, bool turnScreenOff, StreamEngineProfile engineProfile = StreamEngineProfile.OpenGlAntiAliasH264)
         {
             StopInternal(false);
             WantRunning = true;
@@ -81,7 +89,7 @@ namespace DroidDeck.Core
             _bitRateM = bitRateM;
             _enableAudio = enableAudio;
             _turnScreenOff = turnScreenOff;
-            _antiAlias = antiAlias;
+            _engineProfile = engineProfile;
 
             await LaunchProcessAsync();
         }
@@ -92,13 +100,14 @@ namespace DroidDeck.Core
             var token = _cts.Token;
             _lastErrorLine = null;
 
-            // Keep native scrcpy control enabled so Touch mode gets 1:1 SDL3 clicks/swipes/scrolls directly,
-            // while Play/Edit modes intercept via OverlayForm & RawInput/hooks above it.
-            // OpenGL renderer enables trilinear mipmap filtering to eliminate downscale jaggedness.
+            bool useHevcHighFps = _engineProfile == StreamEngineProfile.HighFpsHevcD3d11 || _engineProfile == StreamEngineProfile.HighFpsHevcOpenGl;
+            bool useOpenGl = _engineProfile == StreamEngineProfile.OpenGlAntiAliasH264 || _engineProfile == StreamEngineProfile.HighFpsHevcOpenGl;
             string audioFlag = _enableAudio ? "" : "--no-audio";
             string sizeFlag = _maxSize > 0 ? $"--max-size={_maxSize}" : "";
-            string renderFlag = _antiAlias ? "--render-driver=opengl" : "";
-            string args = $"-s {_serial} --window-borderless --window-title=DroidDeckVideo {sizeFlag} --max-fps={_maxFps} --video-bit-rate={_bitRateM}M --stay-awake --print-fps {renderFlag} {audioFlag}".Trim();
+            string codecFlags = useHevcHighFps ? "--video-codec=h265 --video-codec-options=operating-rate=240" : "";
+            string renderFlag = useOpenGl ? "--render-driver=opengl" : "";
+            string rawArgs = $"-s {_serial} --window-borderless --window-title=DroidDeckVideo {sizeFlag} --max-fps={_maxFps} --video-bit-rate={_bitRateM}M --stay-awake --print-fps {codecFlags} {renderFlag} {audioFlag}";
+            string args = Regex.Replace(rawArgs, @"\s+", " ").Trim();
 
             var psi = new ProcessStartInfo
             {
@@ -142,16 +151,17 @@ namespace DroidDeck.Core
                 }
             };
 
-            // Wait for scrcpy SDL3 window handle and embed inside _hostPanel
+            // Wait for scrcpy SDL3 main video HWND (skipping 50x50 D3D11VA / WGL probe windows)
             bool embedded = false;
             for (int i = 0; i < 80; i++)
             {
                 if (token.IsCancellationRequested || proc.HasExited) break;
                 await Task.Delay(100, token);
                 proc.Refresh();
-                if (proc.MainWindowHandle != IntPtr.Zero)
+                IntPtr foundHwnd = FindScrcpyMainWindow(proc);
+                if (foundHwnd != IntPtr.Zero)
                 {
-                    _scrcpyHwnd = proc.MainWindowHandle;
+                    _scrcpyHwnd = foundHwnd;
                     EmbedWindow();
                     embedded = true;
                     break;
@@ -169,18 +179,70 @@ namespace DroidDeck.Core
             }
 
             initialPhaseDone = true;
-            if (embedded)
+            if (embedded || !proc.HasExited)
             {
                 RunningStateChanged?.Invoke(true);
-                string renderLabel = _antiAlias ? "OpenGL 抗锯齿" : "D3D11VA 硬解";
-                StatusTextChanged?.Invoke($"🟢 原生 {renderLabel}投屏中 ({_maxFps} FPS / {_bitRateM}M)");
+                StatusTextChanged?.Invoke(GetRenderStatusText());
             }
-            else if (!proc.HasExited)
+        }
+
+        private string GetRenderStatusText()
+        {
+            switch (_engineProfile)
             {
-                RunningStateChanged?.Invoke(true);
-                string renderLabel = _antiAlias ? "OpenGL 抗锯齿" : "D3D11VA 硬解";
-                StatusTextChanged?.Invoke($"🟢 原生 {renderLabel}投屏中 ({_maxFps} FPS / {_bitRateM}M)");
+                case StreamEngineProfile.HighFpsHevcD3d11:
+                    return $"⚡ 极限高帧投屏 (H.265 240Hz / D3D11VA / {_maxFps} FPS / {_bitRateM}M)";
+                case StreamEngineProfile.BalancedH264D3d11:
+                    return $"🚀 D3D11VA 硬解投屏 (H.264 / {_maxFps} FPS / {_bitRateM}M)";
+                case StreamEngineProfile.HighFpsHevcOpenGl:
+                    return $"💎 高帧抗锯齿投屏 (H.265 240Hz / OpenGL / {_maxFps} FPS / {_bitRateM}M)";
+                default:
+                    return $"🟢 OpenGL 抗锯齿投屏 (H.264 / {_maxFps} FPS / {_bitRateM}M)";
             }
+        }
+
+        private static IntPtr FindScrcpyMainWindow(Process proc)
+        {
+            if (proc == null || proc.HasExited) return IntPtr.Zero;
+            int targetPid = proc.Id;
+            IntPtr matched = IntPtr.Zero;
+            NativeMethods.EnumWindows((hwnd, lParam) =>
+            {
+                uint pid;
+                NativeMethods.GetWindowThreadProcessId(hwnd, out pid);
+                if (pid != targetPid || !NativeMethods.IsWindowVisible(hwnd)) return true;
+
+                NativeMethods.RECT r;
+                if (!NativeMethods.GetWindowRect(hwnd, out r)) return true;
+                if ((r.Right - r.Left) <= 60 || (r.Bottom - r.Top) <= 60) return true;
+
+                var sb = new System.Text.StringBuilder(128);
+                NativeMethods.GetWindowText(hwnd, sb, sb.Capacity);
+                string title = sb.ToString();
+                if (string.Equals(title, "DroidDeckVideo", StringComparison.OrdinalIgnoreCase))
+                {
+                    matched = hwnd;
+                    return false;
+                }
+                if (matched == IntPtr.Zero && !string.IsNullOrEmpty(title))
+                {
+                    matched = hwnd;
+                }
+                return true;
+            }, IntPtr.Zero);
+
+            if (matched != IntPtr.Zero) return matched;
+
+            if (proc.MainWindowHandle != IntPtr.Zero)
+            {
+                NativeMethods.RECT mr;
+                if (NativeMethods.GetWindowRect(proc.MainWindowHandle, out mr) &&
+                    (mr.Right - mr.Left) > 60 && (mr.Bottom - mr.Top) > 60)
+                {
+                    return proc.MainWindowHandle;
+                }
+            }
+            return IntPtr.Zero;
         }
 
         private void ParseScrcpyLog(string line)
@@ -190,12 +252,27 @@ namespace DroidDeck.Core
                 _lastErrorLine = line.Trim();
             }
 
-            // Match "Texture (D3D11VA): 864x1920" or "New texture: 1920x864"
+            // Match "Texture (D3D11VA): 896x1920" or "Texture: 862x1920"
             var texMatch = Regex.Match(line, @"Texture.*?:\s*(\d+)x(\d+)", RegexOptions.IgnoreCase);
             if (texMatch.Success)
             {
                 int w = int.Parse(texMatch.Groups[1].Value);
                 int h = int.Parse(texMatch.Groups[2].Value);
+                if (w > 0 && h > 0 && line.IndexOf("(D3D11VA)", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    // D3D11VA texture dimensions are hardware-aligned (e.g. 64px CTU padding 862->896 in HEVC);
+                    // derive true unpadded content dimensions so aspect ratio & overlay match scrcpy's viewport.
+                    var st = _adb.CurrentStatus;
+                    int pw = st != null && st.PhysicalWidth > 0 ? st.PhysicalWidth : 1200;
+                    int ph = st != null && st.PhysicalHeight > 0 ? st.PhysicalHeight : 2670;
+                    bool isLandscape = w > h;
+                    int physLong = Math.Max(pw, ph);
+                    int physShort = Math.Min(pw, ph);
+                    int contentLong = _maxSize > 0 ? Math.Min(_maxSize, physLong) : physLong;
+                    int contentShort = Math.Max(2, (int)Math.Round(contentLong * (physShort / (double)physLong) / 2.0) * 2);
+                    w = isLandscape ? contentLong : contentShort;
+                    h = isLandscape ? contentShort : contentLong;
+                }
                 if (w > 0 && h > 0 && (w != VideoWidth || h != VideoHeight))
                 {
                     VideoWidth = w;

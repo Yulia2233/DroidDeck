@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace DroidDeck.Core
 {
@@ -68,6 +69,7 @@ namespace DroidDeck.Core
         }
 
         public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+        public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT
@@ -166,6 +168,15 @@ namespace DroidDeck.Core
 
         [DllImport("user32.dll")]
         public static extern bool IsWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
 
         [DllImport("user32.dll")]
         public static extern bool EnableWindow(IntPtr hWnd, bool bEnable);

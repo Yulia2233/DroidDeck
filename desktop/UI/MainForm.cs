@@ -41,7 +41,7 @@ namespace DroidDeck.UI
         private ComboBox _cmbBitRate;
         private CheckBox _chkAudio;
         private CheckBox _chkTurnScreenOff;
-        private CheckBox _chkAntiAlias;
+        private ComboBox _cmbEngineProfile;
         private Button _btnStart;
         private Button _btnStop;
         private Button _btnHeroStart;
@@ -350,7 +350,7 @@ namespace DroidDeck.UI
             y += 188;
 
             // Card 2: Stream Quality & Start/Stop
-            var cardStream = MakeCard(12, y, 348, 218, "原生 120FPS 引擎设置");
+            var cardStream = MakeCard(12, y, 348, 244, "原生 120FPS 引擎设置");
             _cmbMaxSize = AddCombo(cardStream, "分辨率", 12, 36, 155, new[] { "720P 极速 (1280)", "1080P 高清 (1920)", "原生超清 (不缩放)" }, 1);
             _cmbMaxFps = AddCombo(cardStream, "最大帧率", 180, 36, 155, new[] { "60 FPS 稳帧", "90 FPS 高刷", "120 FPS 电竞满帧" }, 2);
             _cmbBitRate = AddCombo(cardStream, "视频码率", 12, 86, 155, new[] { "8 Mbps", "16 Mbps (推荐)", "24 Mbps (超清)" }, 1);
@@ -368,19 +368,27 @@ namespace DroidDeck.UI
                 Location = new Point(180, 114),
                 Size = new Size(160, 22)
             };
-            _chkAntiAlias = new CheckBox
-            {
-                Text = "✨ 抗锯齿超清渲染 (OpenGL 三线性过滤，消文字锯齿)",
-                Checked = true,
-                Location = new Point(12, 140),
-                Size = new Size(326, 22),
-                ForeColor = Color.FromArgb(167, 243, 208)
-            };
-            _btnStart = MakePrimaryButton("▶ 启动 120FPS 原生投屏", 12, 168, 324, 38);
+            _cmbEngineProfile = AddCombo(
+                cardStream,
+                "渲染与编码模式（画质抗锯齿 vs 极限高帧）",
+                12,
+                140,
+                324,
+                new[]
+                {
+                    "✨ 画质抗锯齿 (H.264 + OpenGL 消锯齿)",
+                    "⚡ 极限高帧 (H.265 240Hz + D3D11VA 硬解)",
+                    "🚀 均衡硬解 (H.264 + D3D11VA 零拷贝)",
+                    "💎 高帧抗锯齿 (H.265 240Hz + OpenGL)"
+                },
+                Math.Max(0, Math.Min(3, _store.EngineProfileIndex))
+            );
+            _cmbEngineProfile.ForeColor = Color.FromArgb(167, 243, 208);
+            _btnStart = MakePrimaryButton("▶ 启动 120FPS 原生投屏", 12, 194, 324, 38);
             _btnStop = new Button
             {
                 Text = "■ 停止投屏",
-                Location = new Point(12, 168),
+                Location = new Point(12, 194),
                 Size = new Size(324, 38),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(220, 38, 38),
@@ -391,11 +399,10 @@ namespace DroidDeck.UI
             };
             cardStream.Controls.Add(_chkAudio);
             cardStream.Controls.Add(_chkTurnScreenOff);
-            cardStream.Controls.Add(_chkAntiAlias);
             cardStream.Controls.Add(_btnStart);
             cardStream.Controls.Add(_btnStop);
             _sidebar.Controls.Add(cardStream);
-            y += 228;
+            y += 254;
 
             // Card 3: Quick Actions
             var cardQuick = MakeCard(12, y, 348, 134, "快捷设备控制");
@@ -546,6 +553,15 @@ namespace DroidDeck.UI
             {
                 _overlay.ShowOverlay = _chkShowOverlay.Checked;
                 SyncOverlay();
+            };
+            _cmbEngineProfile.SelectionChangeCommitted += async (s, e) =>
+            {
+                _store.EngineProfileIndex = Math.Max(0, Math.Min(3, _cmbEngineProfile.SelectedIndex));
+                KeymapRepository.Save(_store);
+                if (_host.IsRunning && !_isStarting)
+                {
+                    await StartMirroringAsync();
+                }
             };
             _cmbPreset.SelectedIndexChanged += (s, e) =>
             {
@@ -791,8 +807,12 @@ namespace DroidDeck.UI
                 int maxFps = fpsArr[Math.Max(0, _cmbMaxFps.SelectedIndex)];
                 int bitM = bitArr[Math.Max(0, _cmbBitRate.SelectedIndex)];
 
-                await _control.StartAsync(st.Serial);
-                await _host.StartAsync(st.Serial, maxSize, maxFps, bitM, _chkAudio.Checked, _chkTurnScreenOff.Checked, _chkAntiAlias.Checked);
+                if (!_control.IsConnected)
+                {
+                    await _control.StartAsync(st.Serial);
+                }
+                var engineProfile = (StreamEngineProfile)Math.Max(0, Math.Min(3, _cmbEngineProfile.SelectedIndex));
+                await _host.StartAsync(st.Serial, maxSize, maxFps, bitM, _chkAudio.Checked, _chkTurnScreenOff.Checked, engineProfile);
                 if (_chkTurnScreenOff.Checked)
                 {
                     _control.SetDisplayPower(false);
