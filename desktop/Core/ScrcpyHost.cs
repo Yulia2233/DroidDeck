@@ -100,11 +100,11 @@ namespace DroidDeck.Core
             var token = _cts.Token;
             _lastErrorLine = null;
 
-            bool useHevcHighFps = _engineProfile == StreamEngineProfile.HighFpsHevcD3d11 || _engineProfile == StreamEngineProfile.HighFpsHevcOpenGl;
+            bool useHevc = _engineProfile == StreamEngineProfile.HighFpsHevcD3d11 || _engineProfile == StreamEngineProfile.HighFpsHevcOpenGl;
             bool useOpenGl = _engineProfile == StreamEngineProfile.OpenGlAntiAliasH264 || _engineProfile == StreamEngineProfile.HighFpsHevcOpenGl;
-            string audioFlag = _enableAudio ? "" : "--no-audio";
+            string audioFlag = _enableAudio ? "--audio-buffer=30" : "--no-audio";
             string sizeFlag = _maxSize > 0 ? $"--max-size={_maxSize}" : "";
-            string codecFlags = useHevcHighFps ? "--video-codec=h265 --video-codec-options=operating-rate=240" : "";
+            string codecFlags = useHevc ? "--video-codec=h265" : "";
             string renderFlag = useOpenGl ? "--render-driver=opengl" : "";
             string rawArgs = $"-s {_serial} --window-borderless --window-title=DroidDeckVideo {sizeFlag} --max-fps={_maxFps} --video-bit-rate={_bitRateM}M --stay-awake --print-fps {codecFlags} {renderFlag} {audioFlag}";
             string args = Regex.Replace(rawArgs, @"\s+", " ").Trim();
@@ -191,13 +191,13 @@ namespace DroidDeck.Core
             switch (_engineProfile)
             {
                 case StreamEngineProfile.HighFpsHevcD3d11:
-                    return $"⚡ 极限高帧投屏 (H.265 240Hz / D3D11VA / {_maxFps} FPS / {_bitRateM}M)";
+                    return $"⚡ H.265 硬解投屏 (HEVC / D3D11VA / {_maxFps} FPS / {_bitRateM}M)";
                 case StreamEngineProfile.BalancedH264D3d11:
-                    return $"🚀 D3D11VA 硬解投屏 (H.264 / {_maxFps} FPS / {_bitRateM}M)";
+                    return $"🚀 H.264 硬解投屏 (D3D11VA / {_maxFps} FPS / {_bitRateM}M)";
                 case StreamEngineProfile.HighFpsHevcOpenGl:
-                    return $"💎 高帧抗锯齿投屏 (H.265 240Hz / OpenGL / {_maxFps} FPS / {_bitRateM}M)";
+                    return $"💎 H.265 抗锯齿投屏 (HEVC / OpenGL / {_maxFps} FPS / {_bitRateM}M)";
                 default:
-                    return $"🟢 OpenGL 抗锯齿投屏 (H.264 / {_maxFps} FPS / {_bitRateM}M)";
+                    return $"🟢 OpenGL 低延迟抗锯齿 (H.264 / {_maxFps} FPS / {_bitRateM}M)";
             }
         }
 

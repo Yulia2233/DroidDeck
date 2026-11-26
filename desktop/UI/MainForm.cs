@@ -376,10 +376,10 @@ namespace DroidDeck.UI
                 324,
                 new[]
                 {
-                    "✨ 画质抗锯齿 (H.264 + OpenGL 消锯齿)",
-                    "⚡ 极限高帧 (H.265 240Hz + D3D11VA 硬解)",
-                    "🚀 均衡硬解 (H.264 + D3D11VA 零拷贝)",
-                    "💎 高帧抗锯齿 (H.265 240Hz + OpenGL)"
+                    "✨ 抗锯齿低延迟 (H.264 + OpenGL 推荐)",
+                    "⚡ H.265 硬解 (HEVC + D3D11VA，高压缩比)",
+                    "🚀 H.264 硬解 (D3D11VA，省 CPU)",
+                    "💎 H.265 + OpenGL (HEVC + OpenGL 抗锯齿)"
                 },
                 Math.Max(0, Math.Min(3, _store.EngineProfileIndex))
             );
